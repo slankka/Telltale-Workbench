@@ -1179,7 +1179,7 @@
             this.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.MaximizeBox = false;
             this.Name = "FontEditor";
-            this.Text = "Font Editor";
+            this.Text = "TTG Font Builder";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.FontEditor_FormClosing);
             this.Load += new System.EventHandler(this.FontEditor_Load);
             this.groupBox1.ResumeLayout(false);
