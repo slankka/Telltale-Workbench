@@ -183,5 +183,14 @@ namespace TTG_Tools
                 landbEditor.Show();
             }
         }
+
+        private void landbNormalizerToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (Application.OpenForms.OfType<LandbNormalizer>().Count() == 0)
+            {
+                Form normalizer = new LandbNormalizer();
+                normalizer.Show();
+            }
+        }
     }
 }

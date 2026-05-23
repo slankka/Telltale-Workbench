@@ -24,6 +24,38 @@ namespace TTG_Tools
             InitializeComponent();
         }
 
+        /// <summary>Hides the Side A/B radio group for single-side tools like LandbNormalizer.</summary>
+        public void SetSingleSideMode()
+        {
+            _grpSide.Visible = false;
+            // Adjust layout: move buttons and status up
+            int offset = _grpSide.Height + 10;
+            _btnFindNext.Top -= offset;
+            _btnReplace.Top -= offset;
+            _btnReplaceAll.Top -= offset;
+            _lblStatus.Top -= offset;
+            this.Height -= offset;
+        }
+
+        /// <summary>
+        /// Opens the dialog for single-side mode, pre-filling the find text.
+        /// </summary>
+        public void OpenSingleSide(string initialFindText)
+        {
+            if (!string.IsNullOrEmpty(initialFindText))
+            {
+                _txtFind.Text = initialFindText;
+                _txtFind.SelectAll();
+            }
+
+            if (!Visible)
+                Show(LandbNormalizer.ActiveInstance);
+            else
+                Activate();
+
+            _txtFind.Focus();
+        }
+
         /// <summary>
         /// Opens the dialog, optionally pre-filling the find text and choosing the active side.
         /// If the dialog is already open, just focuses and selects the find text.

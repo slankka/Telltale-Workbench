@@ -159,7 +159,7 @@ namespace TTG_Tools
             return stats;
         }
 
-        private static string NormalizeImportedSpeechForReplace(string text)
+        internal static string NormalizeImportedSpeechForReplace(string text)
         {
             if (String.IsNullOrEmpty(text)) return text;
 
@@ -189,7 +189,7 @@ namespace TTG_Tools
             return result;
         }
 
-        private static string ConvertLiteralNewlineMarkers(string text)
+        internal static string ConvertLiteralNewlineMarkers(string text)
         {
             if (String.IsNullOrEmpty(text)) return text;
 
@@ -200,7 +200,7 @@ namespace TTG_Tools
                 .Replace("\\r", "\n");
         }
 
-        private static string ApplyAutoSubtitleWrapAfterReplace(string text)
+        internal static string ApplyAutoSubtitleWrapAfterReplace(string text)
         {
             if (String.IsNullOrEmpty(text)) return text;
             if (!AppData.settings.autoInsertSubtitleNewlineInImport) return text;
@@ -256,7 +256,7 @@ namespace TTG_Tools
             return result;
         }
 
-        private static string TransformOutsideMarkers(string text, Func<string, string> transformer)
+        internal static string TransformOutsideMarkers(string text, Func<string, string> transformer)
         {
             if (String.IsNullOrEmpty(text) || transformer == null) return text;
 
@@ -316,7 +316,7 @@ namespace TTG_Tools
                 || (segment[0] == '{' && segment[segment.Length - 1] == '}');
         }
 
-        private static string NormalizePunctuationBeforeNewline(string text)
+        internal static string NormalizePunctuationBeforeNewline(string text)
         {
             if (String.IsNullOrEmpty(text)) return text;
 
@@ -349,7 +349,7 @@ namespace TTG_Tools
             return CountOccurrences(text ?? "", "\\n");
         }
 
-        private static bool ContainsCjkCharacters(string text)
+        internal static bool ContainsCjkCharacters(string text)
         {
             if (String.IsNullOrEmpty(text)) return false;
 
@@ -361,7 +361,7 @@ namespace TTG_Tools
             return false;
         }
 
-        private static bool IsCjkCharacter(char c)
+        internal static bool IsCjkCharacter(char c)
         {
             return
                 (c >= '\u3400' && c <= '\u4DBF') ||   // CJK Unified Ideographs Extension A
@@ -372,7 +372,7 @@ namespace TTG_Tools
                 (c >= '\uFF66' && c <= '\uFF9D');     // Halfwidth Katakana
         }
 
-        private static string RemoveWhitespacesBetweenCjkCharacters(string text)
+        internal static string RemoveWhitespacesBetweenCjkCharacters(string text)
         {
             if (String.IsNullOrEmpty(text)) return text;
 
@@ -401,7 +401,7 @@ namespace TTG_Tools
             return sb.ToString();
         }
 
-        private static string ReplaceDotsNearCjkWithChinesePeriod(string text)
+        internal static string ReplaceDotsNearCjkWithChinesePeriod(string text)
         {
             if (String.IsNullOrEmpty(text)) return text;
 
@@ -429,7 +429,7 @@ namespace TTG_Tools
             return sb.ToString();
         }
 
-        private static string AutoInsertSubtitleNewlineMarkers(string text)
+        internal static string AutoInsertSubtitleNewlineMarkers(string text)
         {
             if (String.IsNullOrEmpty(text)) return text;
 
