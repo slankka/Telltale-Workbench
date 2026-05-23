@@ -1253,6 +1253,7 @@ namespace TTG_Tools
             this.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.MaximizeBox = false;
             this.Name = "FontEditor";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "TTG Font Creator";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.FontEditor_FormClosing);
             this.Load += new System.EventHandler(this.FontEditor_Load);

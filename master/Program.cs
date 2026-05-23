@@ -22,13 +22,20 @@ namespace TTG_Tools
             {
                 FirstTime = false;
                 AppData.LoadConfig();
-                Application.Run(new MainLauncher());
             }
             else
             {
-                MessageBox.Show("Can't find config.xml!\r\nPlease set path for folders, save changes and restart the program!", "Error");
-                Application.Run(new FormSettings());
+                // Create default config.xml with ASCII=1251, Normal Unicode
+                var defaultSettings = new Settings();
+                defaultSettings.ASCII_N = 1251;
+                defaultSettings.unicodeSettings = 0;
+                defaultSettings.languageIndex = -1;
+                Settings.SaveConfig(defaultSettings);
+                AppData.settings = defaultSettings;
+                FirstTime = false;
             }
+
+            Application.Run(new MainLauncher());
         }
     }
 }

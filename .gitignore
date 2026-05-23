@@ -12,6 +12,7 @@
 .claude
 .vscode
 .deepseek
+/docs
 chars-for-BMFont
 landb-research
 .vs

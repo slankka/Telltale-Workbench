@@ -34,6 +34,10 @@ namespace TTG_Tools
         {
             InitializeComponent();
             ActiveInstance = this;
+            // Default: trees visible, menu checked
+            _hideTreesMenu.Checked = true;
+            _panelDirA.Visible = true;
+            _panelDirB.Visible = true;
             InitFindReplace();
             HookSyncScroll();
             HookEditingControls();
@@ -735,6 +739,36 @@ namespace TTG_Tools
                 _gridViewB.Scroll -= OnGridBScroll;
                 _gridViewA.SelectionChanged -= OnGridASelection;
                 _gridViewB.SelectionChanged -= OnGridBSelection;
+            }
+        }
+
+        private void OnHideTreesToggled(object sender, EventArgs e)
+        {
+            bool show = _hideTreesMenu.Checked;
+            _panelDirA.Visible = show;
+            _panelDirB.Visible = show;
+
+            if (show)
+            {
+                _mainTable.ColumnStyles[0].SizeType = SizeType.Percent;
+                _mainTable.ColumnStyles[0].Width = 14F;
+                _mainTable.ColumnStyles[1].SizeType = SizeType.Percent;
+                _mainTable.ColumnStyles[1].Width = 36F;
+                _mainTable.ColumnStyles[2].SizeType = SizeType.Percent;
+                _mainTable.ColumnStyles[2].Width = 36F;
+                _mainTable.ColumnStyles[3].SizeType = SizeType.Percent;
+                _mainTable.ColumnStyles[3].Width = 14F;
+            }
+            else
+            {
+                _mainTable.ColumnStyles[0].SizeType = SizeType.Absolute;
+                _mainTable.ColumnStyles[0].Width = 0F;
+                _mainTable.ColumnStyles[1].SizeType = SizeType.Percent;
+                _mainTable.ColumnStyles[1].Width = 50F;
+                _mainTable.ColumnStyles[2].SizeType = SizeType.Percent;
+                _mainTable.ColumnStyles[2].Width = 50F;
+                _mainTable.ColumnStyles[3].SizeType = SizeType.Absolute;
+                _mainTable.ColumnStyles[3].Width = 0F;
             }
         }
 

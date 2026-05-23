@@ -473,7 +473,7 @@ namespace TTG_Tools
             this.MaximizeBox = false;
             this.Name = "Ttarch2Scanner";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "TTArch2 Scanner";
+            this.Text = "TTArch2 Scanner (beta)";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Ttarch2Scanner_FormClosing);
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();

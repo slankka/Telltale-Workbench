@@ -41,8 +41,8 @@
             this.buttonClose.Size = new System.Drawing.Size(692, 23);
             this.buttonClose.TabIndex = 0;
             this.buttonClose.Text = "Close";
+            this.buttonClose.DialogResult = System.Windows.Forms.DialogResult.OK;
             this.buttonClose.UseVisualStyleBackColor = true;
-            this.buttonClose.Click += new System.EventHandler(this.buttonClose_Click);
             // 
             // richTextBox1
             // 
@@ -50,6 +50,7 @@
             this.richTextBox1.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.richTextBox1.Name = "richTextBox1";
             this.richTextBox1.ReadOnly = true;
+            this.richTextBox1.TabStop = false;
             this.richTextBox1.Size = new System.Drawing.Size(699, 405);
             this.richTextBox1.TabIndex = 1;
             this.richTextBox1.Text = resources.GetString("richTextBox1.Text");

@@ -337,6 +337,7 @@ namespace TTG_Tools
             this.Controls.Add(this.groupBox3);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "AutoDePackerSettings";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "Settings";
             this.Load += new System.EventHandler(this.AutoDePackerSettings_Load);
             this.groupBox3.ResumeLayout(false);

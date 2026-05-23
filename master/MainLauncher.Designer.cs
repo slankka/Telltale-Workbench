@@ -72,11 +72,11 @@ namespace TTG_Tools
             this._pnlLandbReviewer.Click += (s, e) => OpenTool<LandbReviewer>();
             // --- Panel 4: Ttarch2 Scanner ---
             SetupCard(this._pnlScanner, this._lblTitle4, this._lblDesc4,
-                "Ttarch2 Scanner", "Scan and analyze archive structures", 1, 0);
+                "Ttarch2 Scanner (beta)", "Scan and analyze archive structures", 1, 0);
             this._pnlScanner.Click += (s, e) => OpenTool<Ttarch2Scanner>();
-            // --- Panel 5: Font Editor ---
+            // --- Panel 5: Font Creator ---
             SetupCard(this._pnlSettings, this._lblTitle5, this._lblDesc5,
-                "Font Editor", "Create & edit .font texture files", 1, 1);
+                "Font Creator", "Create & edit .font texture files", 1, 1);
             this._pnlSettings.Click += (s, e) => OpenTool<FontEditor>();
             // --- Panel 6: Archive Packer ---
             SetupCard(this._pnlArchivePacker, this._lblTitle6, this._lblDesc6,
@@ -84,7 +84,7 @@ namespace TTG_Tools
             this._pnlArchivePacker.Click += (s, e) => OpenTool<ArchivePacker>();
             // --- Panel 7: Auto (De)Packer ---
             SetupCard(this._pnlAutoPacker, this._lblTitle7, this._lblDesc7,
-                "Auto (De)Packer", "Batch extract/import game text files", 2, 0);
+                "Auto (De)Packer", "Decrypt, unpack & repack game assets (LANGDB, D3DTX, LANDb, Vector Fonts, Lua)", 2, 0);
             this._pnlAutoPacker.Click += (s, e) => OpenTool<AutoPacker>();
             // --- Panel 8: Settings ---
             SetupCard(this._pnlQuickTools, this._lblTitle8, this._lblDesc8,
@@ -109,7 +109,7 @@ namespace TTG_Tools
             this.MaximizeBox = false;
             this.Name = "MainLauncher";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "TTG Tools";
+            this.Text = "TTG Text Mate";
 
             this._mainGrid.ResumeLayout(false);
             this.ResumeLayout(false);
@@ -134,6 +134,7 @@ namespace TTG_Tools
             desc.ForeColor = System.Drawing.Color.FromArgb(100, 100, 100);
             desc.Location = new System.Drawing.Point(12, 36);
             desc.AutoSize = true;
+            desc.MaximumSize = new System.Drawing.Size(210, 0);
 
             panel.Controls.Add(title);
             panel.Controls.Add(desc);

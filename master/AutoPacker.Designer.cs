@@ -594,8 +594,7 @@
             this.MainMenuStrip = this.menuStrip1;
             this.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.MinimumSize = new System.Drawing.Size(414, 293);
-            this.Name = "AutoPacker";
-            this.Text = "Auto(De)Packer";
+            this.Name = "AutoPacker";            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;            this.Text = "Auto(De)Packer";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.AutoPacker_FormClosing);
             this.Load += new System.EventHandler(this.AutoPacker_Load);
             this.groupBox1.ResumeLayout(false);

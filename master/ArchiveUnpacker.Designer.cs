@@ -334,8 +334,7 @@
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.MainMenuStrip = this.menuStrip1;
             this.MaximizeBox = false;
-            this.Name = "ArchiveUnpacker";
-            this.Text = "Archive unpacker";
+            this.Name = "ArchiveUnpacker";            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;            this.Text = "Archive unpacker";
             this.Load += new System.EventHandler(this.ArchiveUnpacker_Load);
             this.DragDrop += new System.Windows.Forms.DragEventHandler(this.ArchiveUnpacker_DragDrop);
             this.DragEnter += new System.Windows.Forms.DragEventHandler(this.ArchiveUnpacker_DragEnter);

@@ -526,8 +526,7 @@
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.MaximizeBox = false;
-            this.Name = "TextEditor";
-            this.Text = "Text editor";
+            this.Name = "TextEditor";            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;            this.Text = "Text editor";
             this.Load += new System.EventHandler(this.TextEditor_Load);
             this.groupBox1.ResumeLayout(false);
             this.groupBox1.PerformLayout();

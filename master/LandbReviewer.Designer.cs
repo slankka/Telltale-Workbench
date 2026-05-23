@@ -34,6 +34,8 @@ namespace TTG_Tools
             this._findInFilesMenu = new System.Windows.Forms.ToolStripMenuItem();
             this._compareMenu = new System.Windows.Forms.ToolStripMenuItem();
             this._syncScrollMenu = new System.Windows.Forms.ToolStripMenuItem();
+            this._viewMenu = new System.Windows.Forms.ToolStripMenuItem();
+            this._hideTreesMenu = new System.Windows.Forms.ToolStripMenuItem();
             this._mainTable = new System.Windows.Forms.TableLayoutPanel();
 
             // === Log ===
@@ -98,7 +100,7 @@ namespace TTG_Tools
 
             // _menuStrip
             this._menuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-                this._fileMenu, this._editMenu, this._compareMenu});
+                this._fileMenu, this._editMenu, this._viewMenu, this._compareMenu});
             this._menuStrip.Location = new System.Drawing.Point(0, 0);
             this._menuStrip.Name = "_menuStrip";
             this._menuStrip.Size = new System.Drawing.Size(1600, 24);
@@ -177,6 +179,17 @@ namespace TTG_Tools
             this._syncScrollMenu.Size = new System.Drawing.Size(136, 22);
             this._syncScrollMenu.Text = "Sync Scroll";
             this._syncScrollMenu.CheckedChanged += new System.EventHandler(this.OnSyncScrollToggled);
+
+            // _viewMenu
+            this._viewMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { this._hideTreesMenu});
+            this._viewMenu.Name = "_viewMenu";
+            this._viewMenu.Size = new System.Drawing.Size(44, 20);
+            this._viewMenu.Text = "View";
+            this._hideTreesMenu.CheckOnClick = true;
+            this._hideTreesMenu.Name = "_hideTreesMenu";
+            this._hideTreesMenu.Size = new System.Drawing.Size(136, 22);
+            this._hideTreesMenu.Text = "File Directory";
+            this._hideTreesMenu.CheckedChanged += new System.EventHandler(this.OnHideTreesToggled);
 
             // _txtLog
             this._txtLog.Dock = System.Windows.Forms.DockStyle.Bottom;
@@ -479,6 +492,8 @@ namespace TTG_Tools
         private System.Windows.Forms.ToolStripMenuItem _findInFilesMenu;
         private System.Windows.Forms.ToolStripMenuItem _compareMenu;
         private System.Windows.Forms.ToolStripMenuItem _syncScrollMenu;
+        private System.Windows.Forms.ToolStripMenuItem _viewMenu;
+        private System.Windows.Forms.ToolStripMenuItem _hideTreesMenu;
         private System.Windows.Forms.TableLayoutPanel _mainTable;
         private System.Windows.Forms.TextBox _txtLog;
 

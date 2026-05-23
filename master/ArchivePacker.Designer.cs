@@ -422,8 +422,7 @@
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(2);
             this.MaximizeBox = false;
-            this.Name = "ArchivePacker";
-            this.Text = "Archive packer";
+            this.Name = "ArchivePacker";            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;            this.Text = "Archive packer";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.ArchivePacker_FormClosing);
             this.Load += new System.EventHandler(this.ArchivePacker_Load);
             this.groupBox1.ResumeLayout(false);

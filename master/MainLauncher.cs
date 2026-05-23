@@ -29,11 +29,17 @@ namespace TTG_Tools
             });
         }
 
+        private bool _suppressCardClick;
+
         private void WireCard(Panel panel, Action action)
         {
-            panel.Click += (s, e) => action();
+            panel.MouseDown += (s, e) => { if (!_suppressCardClick) { _suppressCardClick = true; action(); } };
+            panel.MouseUp += (s, e) => _suppressCardClick = false;
             foreach (Control c in panel.Controls)
-                c.Click += (s, e) => action();
+            {
+                c.MouseDown += (s, e) => { if (!_suppressCardClick) { _suppressCardClick = true; action(); } };
+                c.MouseUp += (s, e) => _suppressCardClick = false;
+            }
         }
 
         private void OpenTool<T>() where T : Form, new()
