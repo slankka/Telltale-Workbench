@@ -35,7 +35,7 @@ namespace TTG_Tools
         }
 
         /// <summary>
-        /// Opens/activates the dialog. Owner must be the parent LandbEditor form.
+        /// Opens/activates the dialog. Owner must be the parent LandbReviewer form.
         /// </summary>
         public void Open(string findText, string rootDir, char side, IWin32Window owner)
         {
@@ -542,7 +542,7 @@ namespace TTG_Tools
 
         private void NavigateToMatch(FindInFilesMatch match)
         {
-            var editor = Owner as LandbEditor;
+            var editor = Owner as LandbReviewer;
             if (editor == null) return;
 
             // Determine which side has this file's parent directory

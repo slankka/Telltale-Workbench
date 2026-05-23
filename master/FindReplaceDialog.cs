@@ -17,6 +17,7 @@ namespace TTG_Tools
         public string FindText => _txtFind.Text;
         public string ReplaceText => _txtReplace.Text;
         public bool MatchCase => _chkMatchCase.Checked;
+        public bool UseRegex => _chkRegex.Checked;
         public char Side => _radioSideA.Checked ? 'A' : 'B';
 
         public FindReplaceDialog()
@@ -28,13 +29,10 @@ namespace TTG_Tools
         public void SetSingleSideMode()
         {
             _grpSide.Visible = false;
-            // Adjust layout: move buttons and status up
-            int offset = _grpSide.Height + 10;
-            _btnFindNext.Top -= offset;
-            _btnReplace.Top -= offset;
-            _btnReplaceAll.Top -= offset;
+            // Move Close button and status label up into the freed space
+            int offset = _grpSide.Height;
+            _btnClose.Top -= offset;
             _lblStatus.Top -= offset;
-            this.Height -= offset;
         }
 
         /// <summary>
@@ -49,7 +47,7 @@ namespace TTG_Tools
             }
 
             if (!Visible)
-                Show(LandbNormalizer.ActiveInstance);
+                Show(LandbReviewer.ActiveInstance);
             else
                 Activate();
 
@@ -74,7 +72,7 @@ namespace TTG_Tools
                 _radioSideB.Checked = true;
 
             if (!Visible)
-                Show(LandbEditor.ActiveInstance);
+                Show(LandbReviewer.ActiveInstance);
             else
                 Activate();
 

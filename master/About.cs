@@ -10,6 +10,12 @@ namespace TTG_Tools
             InitializeComponent();
         }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            buttonClose.Focus();
+        }
+
         private void buttonClose_Click(object sender, EventArgs e)
         {
             Close();

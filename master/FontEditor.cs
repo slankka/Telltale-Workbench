@@ -177,18 +177,18 @@ namespace TTG_Tools
 
         private void landbEditorToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (Application.OpenForms.OfType<LandbEditor>().Count() == 0)
+            if (Application.OpenForms.OfType<LandbReviewer>().Count() == 0)
             {
-                Form landbEditor = new LandbEditor();
+                Form landbEditor = new LandbReviewer();
                 landbEditor.Show();
             }
         }
 
         private void landbNormalizerToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (Application.OpenForms.OfType<LandbNormalizer>().Count() == 0)
+            if (Application.OpenForms.OfType<LandbEditor>().Count() == 0)
             {
-                Form normalizer = new LandbNormalizer();
+                Form normalizer = new LandbEditor();
                 normalizer.Show();
             }
         }

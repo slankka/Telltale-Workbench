@@ -12,33 +12,44 @@ namespace TTG_Tools
 {
     public partial class LandbEditor : Form
     {
-        private string _filePathA, _filePathB;
-        private LandbClass _landbA, _landbB;
-        private List<CommonText> _textsA, _textsB;
-        private bool _isUnicodeA, _isUnicodeB;
-        private bool _mapCreditsA, _mapCreditsB;
-        private bool _isDirtyA, _isDirtyB;
+        private string _filePath;
+        private LandbClass _landb;
+        private List<CommonText> _texts;
+        private bool _isUnicode;
+        private bool _mapCredits;
+        private bool _isDirty;
 
         // Find/Replace state
         private FindReplaceDialog _findReplaceDlg;
-        private FindInFilesDialog _findInFilesDlg;
-        private int _lastSearchRowA = -1;
-        private int _lastSearchRowB = -1;
-        private string _lastSearchTextA = "";
-        private string _lastSearchTextB = "";
+        private int _lastSearchRow = -1;
+        private string _lastSearchText = "";
 
-        /// <summary>Static reference for child dialogs (e.g. FindReplaceDialog).</summary>
+        // Normalization preview cache
+        private List<NormalizePreviewEntry> _previewEntries;
+        private bool _previewDirty = true;
+
+        // Compare (right-click tree)
+        private HashSet<TreeNode> _selectedNodes = new HashSet<TreeNode>();
+        private ContextMenuStrip _treeContextMenu;
+
         internal static LandbEditor ActiveInstance { get; private set; }
+
+        private const int ROWS_PER_ENTRY = 5;
 
         public LandbEditor()
         {
             InitializeComponent();
             ActiveInstance = this;
+            if (DesignMode) return;
             InitFindReplace();
-            HookSyncScroll();
             HookEditingControls();
-            RestoreLastDirectories();
+            HookRowHeaders();
+            InitTreeContextMenu();
+            RestoreLastDirectory();
+            LoadSettings();
         }
+
+        // ========== Init ==========
 
         private void InitFindReplace()
         {
@@ -46,111 +57,221 @@ namespace TTG_Tools
             _findReplaceDlg.FindNextClicked += OnFindNextClicked;
             _findReplaceDlg.ReplaceClicked += OnReplaceClicked;
             _findReplaceDlg.ReplaceAllClicked += OnReplaceAllClicked;
-
-            _findInFilesDlg = new FindInFilesDialog();
-            _findInFilesDlg.OnFileNeedsRefresh = IsFileOpenInEditor;
-            _findInFilesDlg.OnLogMessage = Log;
+            // Hide the Side group since we only have one side
+            _findReplaceDlg.SetSingleSideMode();
         }
 
         private void HookEditingControls()
         {
-            _gridViewA.EditingControlShowing += OnEditingControlShowing;
-            _gridViewB.EditingControlShowing += OnEditingControlShowing;
+            _gridView.EditingControlShowing += (sender, e) =>
+            {
+                var tb = e.Control as TextBox;
+                if (tb == null) return;
+                tb.Multiline = true;
+                tb.AcceptsReturn = true;
+                tb.ScrollBars = ScrollBars.Vertical;
+                tb.WordWrap = true;
+                if (_gridView.CurrentCell != null)
+                {
+                    string cellValue = _gridView.CurrentCell.Value?.ToString() ?? "";
+                    if (cellValue.Contains("\n"))
+                        tb.Text = cellValue;
+                }
+            };
         }
 
-        private void OnEditingControlShowing(object sender, DataGridViewEditingControlShowingEventArgs e)
+        private void HookRowHeaders()
         {
-            var tb = e.Control as TextBox;
-            if (tb == null) return;
-
-            tb.Multiline = true;
-            tb.AcceptsReturn = true;
-            tb.ScrollBars = ScrollBars.Vertical;
-            tb.WordWrap = true;
-
-            // The DGV copies the cell value to the TextBox BEFORE this event,
-            // but if TextBox was single-line at that point, newlines are stripped.
-            // Re-set the text from the cell's actual value.
-            var grid = sender as DataGridView;
-            if (grid?.CurrentCell != null)
+            _gridView.TopLeftHeaderCell.Value = "#";
+            _gridView.RowPostPaint += (sender, e) =>
             {
-                string cellValue = grid.CurrentCell.Value?.ToString() ?? "";
-                if (cellValue.Contains("\n"))
-                    tb.Text = cellValue;
-            }
+                if (e.RowIndex < 0) return;
+                // Show entry number on the first row of each entry block
+                if (e.RowIndex % ROWS_PER_ENTRY == 0)
+                {
+                    int entryNum = (e.RowIndex / ROWS_PER_ENTRY) + 1;
+                    string text = entryNum.ToString();
+                    var rect = new Rectangle(e.RowBounds.Left + 2, e.RowBounds.Top + 2,
+                        _gridView.RowHeadersWidth - 4, e.RowBounds.Height - 4);
+                    using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                    using (var font = new Font(_gridView.Font, FontStyle.Regular))
+                    {
+                        e.Graphics.DrawString(text, font, Brushes.DimGray, rect, fmt);
+                    }
+                }
+            };
         }
 
-        private void RestoreLastDirectories()
+        private void LoadSettings()
         {
-            string dirA = AppData.settings.landbEditorLastDirA;
-            string dirB = AppData.settings.landbEditorLastDirB;
-            if (!string.IsNullOrEmpty(dirA) && Directory.Exists(dirA))
-            {
-                _txtPathA.Text = dirA;
-                RefreshTree(_treeViewA, dirA);
-                Log($"Restored Dir A: {dirA}");
-            }
-            if (!string.IsNullOrEmpty(dirB) && Directory.Exists(dirB))
-            {
-                _txtPathB.Text = dirB;
-                RefreshTree(_treeViewB, dirB);
-                Log($"Restored Dir B: {dirB}");
-            }
+            _checkDotToChinese.Checked = AppData.settings.replaceDotToChinesePeriodInImport;
+            _checkRemoveCjkBlanks.Checked = AppData.settings.removeBlanksBetweenCjkCharsInImport;
+            _checkAutoWrap.Checked = AppData.settings.autoInsertSubtitleNewlineInImport;
+            _checkNormalizePunctuation.Checked = AppData.settings.normalizePunctuationBeforeNewlineInImport;
+            SyncMenuChecks();
         }
 
-        private void HookSyncScroll()
+        private void SyncMenuChecks()
         {
-            if (_syncScrollMenu.Checked)
-            {
-                _gridViewA.Scroll += OnGridAScroll;
-                _gridViewB.Scroll += OnGridBScroll;
-            }
-            // Also sync row selection so clicking an entry highlights the counterpart
-            _gridViewA.SelectionChanged += OnGridASelection;
-            _gridViewB.SelectionChanged += OnGridBSelection;
+            _menuCheckDotToChinese.Checked = _checkDotToChinese.Checked;
+            _menuCheckRemoveCjkBlanks.Checked = _checkRemoveCjkBlanks.Checked;
+            _menuCheckAutoWrap.Checked = _checkAutoWrap.Checked;
+            _menuCheckNormalizePunctuation.Checked = _checkNormalizePunctuation.Checked;
         }
 
-        private bool _suppressSelectionSync;
-        private bool _suppressScrollSync;
-        private int _lastEntryA = -1, _lastEntryB = -1;
+        private void InitTreeContextMenu()
+        {
+            _treeContextMenu = new ContextMenuStrip();
+            var openItem = new ToolStripMenuItem("Open");
+            openItem.Click += OnTreeOpenClicked;
+            var compareItem = new ToolStripMenuItem("Compare (Open in Review Editor)");
+            compareItem.Click += OnTreeCompareClicked;
+            _treeContextMenu.Items.Add(openItem);
+            _treeContextMenu.Items.Add(compareItem);
+        }
+
+        private void SelectTreeNode(TreeNode node, bool add)
+        {
+            if (!add) ClearTreeSelection();
+            if (node?.Tag != null && File.Exists(node.Tag.ToString()))
+            {
+                _selectedNodes.Add(node);
+                node.BackColor = SystemColors.Highlight;
+                node.ForeColor = SystemColors.HighlightText;
+            }
+            _treeView.SelectedNode = node;
+        }
+
+        private void ClearTreeSelection()
+        {
+            foreach (var n in _selectedNodes)
+            {
+                n.BackColor = _treeView.BackColor;
+                n.ForeColor = _treeView.ForeColor;
+            }
+            _selectedNodes.Clear();
+        }
+
+        private void OnTreeNodeMouseClick(object sender, TreeNodeMouseClickEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                SelectTreeNode(e.Node, ModifierKeys.HasFlag(Keys.Control));
+            }
+            else if (e.Button == MouseButtons.Right)
+            {
+                if (e.Node?.Tag == null || !File.Exists(e.Node.Tag.ToString())) return;
+                if (!_selectedNodes.Contains(e.Node))
+                    SelectTreeNode(e.Node, ModifierKeys.HasFlag(Keys.Control));
+
+                var landbNodes = _selectedNodes.Where(n => n.Tag is string s && File.Exists(s)).ToList();
+                int count = landbNodes.Count;
+
+                _treeContextMenu.Items[0].Enabled = count == 1;
+                _treeContextMenu.Items[0].Text = count == 1
+                    ? $"Open \"{Path.GetFileName(landbNodes[0].Tag.ToString())}\""
+                    : "Open (select 1 file)";
+
+                _treeContextMenu.Items[1].Enabled = count == 2;
+                _treeContextMenu.Items[1].Text = "Compare (Open in Review Editor)";
+
+                _treeContextMenu.Show(_treeView, e.Location);
+            }
+        }
+
+        private void OnTreeOpenClicked(object sender, EventArgs e)
+        {
+            var landbNodes = _selectedNodes.Where(n => n.Tag is string s && File.Exists(s)).ToList();
+            if (landbNodes.Count >= 1)
+                LoadLandb(landbNodes[0].Tag.ToString());
+        }
+
+        private void OnTreeCompareClicked(object sender, EventArgs e)
+        {
+            var landbNodes = _selectedNodes.Where(n => n.Tag is string s && File.Exists(s)).ToList();
+            if (landbNodes.Count != 2) return;
+
+            string pathA = landbNodes[0].Tag.ToString();
+            string pathB = landbNodes[1].Tag.ToString();
+
+            var editor = Application.OpenForms.OfType<LandbReviewer>().FirstOrDefault();
+            if (editor == null)
+            {
+                editor = new LandbReviewer();
+                editor.Show();
+                Application.DoEvents();
+            }
+            editor.LoadFileToSide('A', pathA);
+            editor.LoadFileToSide('B', pathB);
+            Log($"Opened Compare: {Path.GetFileName(pathA)} ↔ {Path.GetFileName(pathB)}");
+        }
 
         // ========== Menu / toolbar events ==========
 
-        private void OnOpenDirA(object sender, EventArgs e) => BrowseDirectory('A');
-        private void OnOpenDirB(object sender, EventArgs e) => BrowseDirectory('B');
+        private void OnOpenDir(object sender, EventArgs e) => BrowseDirectory();
         private void OnCloseMenu(object sender, EventArgs e) => Close();
-        private void OnBrowseA(object sender, EventArgs e) => BrowseDirectory('A');
-        private void OnBrowseB(object sender, EventArgs e) => BrowseDirectory('B');
-        private void OnSaveA(object sender, EventArgs e) => Save('A');
-        private void OnSaveB(object sender, EventArgs e) => Save('B');
-        private void OnSaveAsA(object sender, EventArgs e) => SaveAs('A');
-        private void OnSaveAsB(object sender, EventArgs e) => SaveAs('B');
+        private void OnBrowse(object sender, EventArgs e) => BrowseDirectory();
+        private void OnSave(object sender, EventArgs e) => Save();
+        private void OnSaveAs(object sender, EventArgs e) => SaveAs();
+        private void OnExportChars(object sender, EventArgs e) => ExportAllChars();
+        private void OnTreeSelect(object sender, TreeViewEventArgs e)
+        {
+            // Single click: select only, do not load
+        }
 
-        private void OnExportCharsA(object sender, EventArgs e) => ExportAllChars('A');
-        private void OnExportCharsB(object sender, EventArgs e) => ExportAllChars('B');
+        private void OnTreeDoubleClick(object sender, TreeNodeMouseClickEventArgs e)
+        {
+            if (e.Node?.Tag != null && File.Exists(e.Node.Tag.ToString()))
+                LoadLandb(e.Node.Tag.ToString());
+        }
 
-        private void OnTreeSelectA(object sender, TreeViewEventArgs e) => OnTreeSelect('A', e.Node);
-        private void OnTreeSelectB(object sender, TreeViewEventArgs e) => OnTreeSelect('B', e.Node);
+        private bool _suppressCellSync;
 
-        private void OnCellChangedA(object sender, DataGridViewCellEventArgs e) => OnCellChanged('A');
-        private void OnCellChangedB(object sender, DataGridViewCellEventArgs e) => OnCellChanged('B');
+        private void OnCellChangedHandler(object sender, DataGridViewCellEventArgs e)
+        {
+            _isDirty = true;
+            _previewDirty = true;
+            UpdateTitle();
 
-        private void OnCellValidatingA(object sender, DataGridViewCellValidatingEventArgs e) => OnCellValidating('A', e);
-        private void OnCellValidatingB(object sender, DataGridViewCellValidatingEventArgs e) => OnCellValidating('B', e);
+            if (_suppressCellSync || e.ColumnIndex != 1) return;
+            int offset = e.RowIndex % ROWS_PER_ENTRY;
 
-        private void OnKeyDown(object sender, KeyEventArgs e)
+            // Sync speechOriginal ↔ speechTranslation
+            if (offset == 2 || offset == 3)
+            {
+                int siblingOffset = (offset == 2) ? 3 : 2;
+                int siblingRow = e.RowIndex - offset + siblingOffset;
+                if (siblingRow >= 0 && siblingRow < _gridView.Rows.Count)
+                {
+                    string value = _gridView.Rows[e.RowIndex].Cells[1].Value?.ToString() ?? "";
+                    _suppressCellSync = true;
+                    _gridView.Rows[siblingRow].Cells[1].Value = value;
+                    _suppressCellSync = false;
+                }
+            }
+        }
+
+        private void OnCellValidatingHandler(object sender, DataGridViewCellValidatingEventArgs e)
+        {
+            if (e.ColumnIndex == 1 && e.RowIndex % ROWS_PER_ENTRY == 4)
+            {
+                string v = e.FormattedValue?.ToString() ?? "";
+                if (v.Length > 8) { e.Cancel = true; Log("ERROR: flags max 8 chars"); return; }
+                foreach (char c in v) { if (c != '0' && c != '1') { e.Cancel = true; Log("ERROR: flags 0/1 only"); return; } }
+            }
+        }
+
+        private void OnFormKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Control && e.KeyCode == Keys.S)
             {
                 e.SuppressKeyPress = true;
-                if (_gridViewB.ContainsFocus) Save('B');
-                else Save('A');
+                Save();
             }
             else if ((e.Control && e.KeyCode == Keys.F) || (e.Control && e.KeyCode == Keys.H))
             {
                 e.SuppressKeyPress = true;
-                if (e.Shift) OpenFindInFiles();
-                else OpenFindReplace();
+                OpenFindReplace();
             }
             else if (e.KeyCode == Keys.F3)
             {
@@ -161,84 +282,42 @@ namespace TTG_Tools
 
         // ========== Find / Replace ==========
 
-        /// <summary>Which side is currently active (has focus in its grid).</summary>
-        private char ActiveSide
-        {
-            get
-            {
-                if (_gridViewA.ContainsFocus) return 'A';
-                if (_gridViewB.ContainsFocus) return 'B';
-                return 'A'; // default
-            }
-        }
-
-        /// <summary>Gets the grid and last-search state for a side.</summary>
-        private void GetSearchState(char side, out DataGridView grid, out int lastRow, out string lastText)
-        {
-            if (side == 'A')
-            {
-                grid = _gridViewA; lastRow = _lastSearchRowA; lastText = _lastSearchTextA;
-            }
-            else
-            {
-                grid = _gridViewB; lastRow = _lastSearchRowB; lastText = _lastSearchTextB;
-            }
-        }
-
-        private void SetSearchState(char side, int lastRow, string lastText)
-        {
-            if (side == 'A') { _lastSearchRowA = lastRow; _lastSearchTextA = lastText; }
-            else { _lastSearchRowB = lastRow; _lastSearchTextB = lastText; }
-        }
+        private void OnFindOpen(object sender, EventArgs e) => OpenFindReplace();
+        private void OnFindNextMenu(object sender, EventArgs e) => FindNext();
 
         private void OpenFindReplace()
         {
-            char activeSide = ActiveSide;
-            string selectedText = GetSelectedText(activeSide);
-            _findReplaceDlg.Open(selectedText ?? "", activeSide);
+            string selectedText = GetSelectedText();
+            // For single-side mode, open with side placeholder
+            _findReplaceDlg.OpenSingleSide(selectedText ?? "");
 
-            // Always position dialog relative to parent
             _findReplaceDlg.StartPosition = FormStartPosition.Manual;
             _findReplaceDlg.Location = new System.Drawing.Point(
                 this.Location.X + this.Width - _findReplaceDlg.Width - 50,
                 this.Location.Y + 80);
         }
 
-        private string GetSelectedText(char side)
+        private string GetSelectedText()
         {
-            var grid = side == 'A' ? _gridViewA : _gridViewB;
-            if (grid?.CurrentCell != null)
+            if (_gridView?.CurrentCell != null)
             {
-                string value = grid.CurrentCell.Value?.ToString() ?? "";
-                if (!string.IsNullOrEmpty(value))
-                {
-                    // If a portion is selected, return that; otherwise return whole cell
-                    if (grid.EditingControl is TextBox tb && !string.IsNullOrEmpty(tb.SelectedText))
-                        return tb.SelectedText;
-                }
+                if (_gridView.EditingControl is TextBox tb && !string.IsNullOrEmpty(tb.SelectedText))
+                    return tb.SelectedText;
             }
             return "";
         }
 
-        // ---- Menu / button handlers ----
-
-        private void OnFindOpen(object sender, EventArgs e) => OpenFindReplace();
-        private void OnFindNextMenu(object sender, EventArgs e) => FindNext();
-
-        private void OnFindInFiles(object sender, EventArgs e) => OpenFindInFiles();
-
-        // ---- Dialog event handlers ----
-
         private void OnFindNextClicked(object sender, EventArgs e)
         {
-            char side = _findReplaceDlg.Side;
-            GetSearchState(side, out var grid, out int lastRow, out _);
-            int startRow = (lastRow >= 0 && lastRow < grid.Rows.Count) ? lastRow + 1 : 0;
-            int found = FindInGrid(grid, _findReplaceDlg.FindText, startRow, _findReplaceDlg.MatchCase);
+            string findText = _findReplaceDlg.FindText;
+            if (string.IsNullOrEmpty(findText)) return;
+            int startRow = (_lastSearchRow >= 0 && _lastSearchRow < _gridView.Rows.Count) ? _lastSearchRow + 1 : 0;
+            int found = FindInGrid(_gridView, findText, startRow, _findReplaceDlg.MatchCase, _findReplaceDlg.UseRegex);
             if (found >= 0)
             {
-                SetSearchState(side, found, _findReplaceDlg.FindText);
-                SelectCell(grid, found);
+                _lastSearchRow = found;
+                _lastSearchText = findText;
+                SelectCell(_gridView, found);
                 _findReplaceDlg.ShowStatus($"Found at row {found}");
             }
             else
@@ -249,82 +328,75 @@ namespace TTG_Tools
 
         private void OnReplaceClicked(object sender, EventArgs e)
         {
-            char side = _findReplaceDlg.Side;
-            GetSearchState(side, out var grid, out int lastRow, out _);
             string findText = _findReplaceDlg.FindText;
             string replaceText = _findReplaceDlg.ReplaceText;
             bool matchCase = _findReplaceDlg.MatchCase;
-
+            bool useRegex = _findReplaceDlg.UseRegex;
             if (string.IsNullOrEmpty(findText)) return;
 
-            // If we have a current match, replace it first
-            if (lastRow >= 0 && lastRow < grid.Rows.Count)
+            if (_lastSearchRow >= 0 && _lastSearchRow < _gridView.Rows.Count)
             {
-                string currentVal = grid.Rows[lastRow].Cells[1].Value?.ToString() ?? "";
-                StringComparison cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-                if (currentVal.IndexOf(findText, cmp) >= 0)
+                string currentVal = (_gridView.Rows[_lastSearchRow].Cells[1].Value?.ToString() ?? "").Replace("\r\n", "\n");
+                if (MatchesRegexOrPlain(currentVal, findText, matchCase, useRegex))
                 {
-                    string newVal = ReplaceFirst(currentVal, findText, replaceText, cmp);
-                    grid.Rows[lastRow].Cells[1].Value = newVal;
-                    OnCellChanged(side);
+                    string newVal = ReplaceRegexOrPlain(currentVal, findText, replaceText, matchCase, useRegex, firstOnly: true);
+                    _gridView.Rows[_lastSearchRow].Cells[1].Value = newVal.Replace("\n", "\r\n");
+                    _isDirty = true;
+                    _previewDirty = true;
+                    UpdateTitle();
                 }
             }
 
-            // Then find next
-            int startRow = (lastRow >= 0 && lastRow < grid.Rows.Count) ? lastRow + 1 : 0;
-            int found = FindInGrid(grid, findText, startRow, matchCase);
+            int startRow = (_lastSearchRow >= 0 && _lastSearchRow < _gridView.Rows.Count) ? _lastSearchRow + 1 : 0;
+            int found = FindInGrid(_gridView, findText, startRow, matchCase, useRegex);
             if (found >= 0)
             {
-                SetSearchState(side, found, findText);
-                SelectCell(grid, found);
+                _lastSearchRow = found;
+                _lastSearchText = findText;
+                SelectCell(_gridView, found);
                 _findReplaceDlg.ShowStatus($"Replaced, next at row {found}");
             }
             else
             {
-                SetSearchState(side, -1, findText);
+                _lastSearchRow = -1;
+                _lastSearchText = findText;
                 _findReplaceDlg.ShowStatus("Replaced, no more matches", isError: true);
             }
         }
 
         private void OnReplaceAllClicked(object sender, EventArgs e)
         {
-            char side = _findReplaceDlg.Side;
-            GetSearchState(side, out var grid, out _, out _);
             string findText = _findReplaceDlg.FindText;
             string replaceText = _findReplaceDlg.ReplaceText;
             bool matchCase = _findReplaceDlg.MatchCase;
-
+            bool useRegex = _findReplaceDlg.UseRegex;
             if (string.IsNullOrEmpty(findText))
             {
                 _findReplaceDlg.ShowStatus("Nothing to find", isError: true);
                 return;
             }
 
-            StringComparison cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
             int count = 0;
-            for (int r = 0; r < grid.Rows.Count; r++)
+            for (int r = 0; r < _gridView.Rows.Count; r++)
             {
-                string value = grid.Rows[r].Cells[1].Value?.ToString() ?? "";
-                if (value.IndexOf(findText, cmp) >= 0)
+                string value = (_gridView.Rows[r].Cells[1].Value?.ToString() ?? "").Replace("\r\n", "\n");
+                if (MatchesRegexOrPlain(value, findText, matchCase, useRegex))
                 {
-                    string newVal = value.Replace(findText, replaceText);
-                    // Respect match case for replacement
-                    if (!matchCase)
-                    {
-                        // Use case-insensitive replace
-                        newVal = ReplaceAllIgnoreCase(value, findText, replaceText);
-                    }
-                    grid.Rows[r].Cells[1].Value = newVal;
+                    string newVal = ReplaceRegexOrPlain(value, findText, replaceText, matchCase, useRegex, firstOnly: false);
+                    _gridView.Rows[r].Cells[1].Value = newVal.Replace("\n", "\r\n");
                     count++;
                 }
             }
 
             if (count > 0)
             {
-                OnCellChanged(side);
-                SetSearchState(side, -1, findText);
+                _isDirty = true;
+                _previewDirty = true;
+                UpdateTitle();
+                _lastSearchRow = -1;
+                _lastSearchText = findText;
                 _findReplaceDlg.ShowStatus($"Replaced {count} occurrence(s)");
-                Log($"Side {side}: Replaced All - {count} occurrence(s) of \"{findText}\"");
+                Log($"Replaced All: {count} occurrence(s) of \"{findText}\"");
             }
             else
             {
@@ -332,45 +404,37 @@ namespace TTG_Tools
             }
         }
 
-        // ========== Core find logic ==========
-
-        /// <summary>Performs Find Next using the last search text from the dialog (for F3).</summary>
         private void FindNext()
         {
             if (_findReplaceDlg == null || string.IsNullOrEmpty(_findReplaceDlg.FindText))
             {
-                // No previous search; open Find dialog
                 OpenFindReplace();
                 return;
             }
 
-            char side = _findReplaceDlg.Side;
-            GetSearchState(side, out var grid, out int lastRow, out string lastText);
+            string findText = _findReplaceDlg.FindText;
+            if (_lastSearchText != findText)
+                _lastSearchRow = -1;
 
-            // If search text changed, reset
-            if (lastText != _findReplaceDlg.FindText)
-            {
-                lastRow = -1;
-            }
-
-            int startRow = (lastRow >= 0 && lastRow < grid.Rows.Count) ? lastRow + 1 : 0;
-            int found = FindInGrid(grid, _findReplaceDlg.FindText, startRow, _findReplaceDlg.MatchCase);
+            int startRow = (_lastSearchRow >= 0 && _lastSearchRow < _gridView.Rows.Count) ? _lastSearchRow + 1 : 0;
+            int found = FindInGrid(_gridView, findText, startRow, _findReplaceDlg.MatchCase, _findReplaceDlg.UseRegex);
             if (found >= 0)
             {
-                SetSearchState(side, found, _findReplaceDlg.FindText);
-                SelectCell(grid, found);
+                _lastSearchRow = found;
+                _lastSearchText = findText;
+                SelectCell(_gridView, found);
                 _findReplaceDlg.ShowStatus($"Found at row {found}");
             }
             else
             {
-                // Wrap-around: try from beginning
                 if (startRow > 0)
                 {
-                    found = FindInGrid(grid, _findReplaceDlg.FindText, 0, _findReplaceDlg.MatchCase);
+                    found = FindInGrid(_gridView, findText, 0, _findReplaceDlg.MatchCase, _findReplaceDlg.UseRegex);
                     if (found >= 0)
                     {
-                        SetSearchState(side, found, _findReplaceDlg.FindText);
-                        SelectCell(grid, found);
+                        _lastSearchRow = found;
+                        _lastSearchText = findText;
+                        SelectCell(_gridView, found);
                         _findReplaceDlg.ShowStatus($"Wrapped - found at row {found}");
                         return;
                     }
@@ -379,48 +443,90 @@ namespace TTG_Tools
             }
         }
 
-        /// <summary>Searches the Value column (index 1) of a DataGridView for text.</summary>
-        /// <returns>The row index of the first match, or -1 if not found.</returns>
-        private static int FindInGrid(DataGridView grid, string searchText, int startRow, bool matchCase)
+        private static bool MatchesRegexOrPlain(string text, string pattern, bool matchCase, bool useRegex)
+        {
+            if (useRegex)
+            {
+                var options = System.Text.RegularExpressions.RegexOptions.None;
+                if (!matchCase) options |= System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+                try { return System.Text.RegularExpressions.Regex.IsMatch(text, pattern, options); }
+                catch (ArgumentException) { return false; }
+            }
+            else
+            {
+                StringComparison cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+                return text.IndexOf(pattern, cmp) >= 0;
+            }
+        }
+
+        private static string ReplaceRegexOrPlain(string text, string find, string replace, bool matchCase, bool useRegex, bool firstOnly)
+        {
+            if (useRegex)
+            {
+                var options = System.Text.RegularExpressions.RegexOptions.None;
+                if (!matchCase) options |= System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+                try
+                {
+                    int count = firstOnly ? 1 : int.MaxValue;
+                    var regex = new System.Text.RegularExpressions.Regex(find, options);
+                    return regex.Replace(text, replace, count);
+                }
+                catch (ArgumentException) { return text; }
+            }
+            else
+            {
+                StringComparison cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+                if (firstOnly)
+                {
+                    int idx = text.IndexOf(find, cmp);
+                    if (idx < 0) return text;
+                    return text.Substring(0, idx) + replace + text.Substring(idx + find.Length);
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(find)) return text;
+                    var sb = new StringBuilder();
+                    int pos = 0;
+                    while (pos < text.Length)
+                    {
+                        int idx = text.IndexOf(find, pos, cmp);
+                        if (idx < 0) { sb.Append(text.Substring(pos)); break; }
+                        sb.Append(text.Substring(pos, idx - pos));
+                        sb.Append(replace);
+                        pos = idx + find.Length;
+                    }
+                    return sb.ToString();
+                }
+            }
+        }
+
+        private static int FindInGrid(DataGridView grid, string searchText, int startRow, bool matchCase, bool useRegex)
         {
             if (grid == null || grid.Rows.Count == 0 || string.IsNullOrEmpty(searchText))
                 return -1;
 
-            StringComparison cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
             int totalRows = grid.Rows.Count;
-
-            // Clamp start row
             if (startRow < 0) startRow = 0;
             if (startRow >= totalRows) startRow = 0;
 
-            // Search from startRow to end
             for (int r = startRow; r < totalRows; r++)
             {
-                string value = grid.Rows[r].Cells[1].Value?.ToString() ?? "";
-                if (value.IndexOf(searchText, cmp) >= 0)
-                    return r;
+                string value = (grid.Rows[r].Cells[1].Value?.ToString() ?? "").Replace("\r\n", "\n");
+                if (MatchesRegexOrPlain(value, searchText, matchCase, useRegex)) return r;
             }
-
-            // Wrap around: search from 0 to startRow - 1
             for (int r = 0; r < startRow; r++)
             {
-                string value = grid.Rows[r].Cells[1].Value?.ToString() ?? "";
-                if (value.IndexOf(searchText, cmp) >= 0)
-                    return r;
+                string value = (grid.Rows[r].Cells[1].Value?.ToString() ?? "").Replace("\r\n", "\n");
+                if (MatchesRegexOrPlain(value, searchText, matchCase, useRegex)) return r;
             }
-
             return -1;
         }
 
-        /// <summary>Selects a cell in the grid and scrolls to it.</summary>
         private static void SelectCell(DataGridView grid, int rowIndex)
         {
             if (grid == null || rowIndex < 0 || rowIndex >= grid.Rows.Count) return;
-
             grid.ClearSelection();
             grid.CurrentCell = grid.Rows[rowIndex].Cells[1];
-
-            // Ensure the row is visible
             if (rowIndex < grid.FirstDisplayedScrollingRowIndex ||
                 rowIndex >= grid.FirstDisplayedScrollingRowIndex + grid.DisplayedRowCount(false))
             {
@@ -428,165 +534,40 @@ namespace TTG_Tools
             }
         }
 
-        /// <summary>Replaces the first occurrence of oldValue with newValue in text.</summary>
-        private static string ReplaceFirst(string text, string oldValue, string newValue, StringComparison cmp)
-        {
-            int idx = text.IndexOf(oldValue, cmp);
-            if (idx < 0) return text;
-            return text.Substring(0, idx) + newValue + text.Substring(idx + oldValue.Length);
-        }
-
-        /// <summary>Case-insensitive replace all.</summary>
-        private static string ReplaceAllIgnoreCase(string text, string oldValue, string newValue)
-        {
-            if (string.IsNullOrEmpty(oldValue)) return text;
-
-            var sb = new System.Text.StringBuilder();
-            int pos = 0;
-            while (pos < text.Length)
-            {
-                int idx = text.IndexOf(oldValue, pos, StringComparison.OrdinalIgnoreCase);
-                if (idx < 0)
-                {
-                    sb.Append(text.Substring(pos));
-                    break;
-                }
-                sb.Append(text.Substring(pos, idx - pos));
-                sb.Append(newValue);
-                pos = idx + oldValue.Length;
-            }
-            return sb.ToString();
-        }
-
-        // ========== Find in Files ==========
-
-        private void OpenFindInFiles()
-        {
-            char side = ActiveSide;
-            string dir = GetCurrentDirectory(side);
-            string selectedText = GetSelectedText(side);
-
-            _findInFilesDlg.Open(selectedText, dir, side, this);
-
-            // Always position centered on parent
-            _findInFilesDlg.StartPosition = FormStartPosition.Manual;
-            _findInFilesDlg.Location = new System.Drawing.Point(
-                this.Location.X + (this.Width - _findInFilesDlg.Width) / 2,
-                this.Location.Y + (this.Height - _findInFilesDlg.Height) / 2);
-        }
-
-        private string GetCurrentDirectory(char side)
-        {
-            string path = side == 'A' ? _txtPathA.Text : _txtPathB.Text;
-            if (!string.IsNullOrEmpty(path))
-            {
-                if (Directory.Exists(path)) return path;
-                if (File.Exists(path)) return Path.GetDirectoryName(path);
-            }
-            return "";
-        }
-
-        /// <summary>
-        /// Called by FindInFilesDialog to check if a file is currently open in the editor.
-        /// Returns true if the file is loaded on the given side.
-        /// </summary>
-        private bool IsFileOpenInEditor(string filePath, char side)
-        {
-            string currentPath = side == 'A' ? _filePathA : _filePathB;
-            return !string.IsNullOrEmpty(currentPath) &&
-                   string.Equals(currentPath, filePath, StringComparison.OrdinalIgnoreCase);
-        }
-
-        /// <summary>
-        /// Navigates the editor to a specific file and entry, loading the file if needed.
-        /// Called when user double-clicks a result in FindInFilesDialog.
-        /// </summary>
-        internal void NavigateToFileAndEntry(string filePath, int entryIndex, string fieldName)
-        {
-            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return;
-
-            // Determine which side to use: try to match directory, fall back to Side A
-            char side;
-            string dir = Path.GetDirectoryName(filePath);
-
-            if (!string.IsNullOrEmpty(_txtPathA.Text) &&
-                dir.StartsWith(_txtPathA.Text, StringComparison.OrdinalIgnoreCase))
-                side = 'A';
-            else if (!string.IsNullOrEmpty(_txtPathB.Text) &&
-                dir.StartsWith(_txtPathB.Text, StringComparison.OrdinalIgnoreCase))
-                side = 'B';
-            else
-                side = 'A';
-
-            // Show the directory in the tree
-            string parentDir = Path.GetDirectoryName(filePath);
-            if (side == 'A' && parentDir != _txtPathA.Text)
-            {
-                _txtPathA.Text = parentDir;
-                RefreshTree(_treeViewA, parentDir);
-            }
-            else if (side == 'B' && parentDir != _txtPathB.Text)
-            {
-                _txtPathB.Text = parentDir;
-                RefreshTree(_treeViewB, parentDir);
-            }
-
-            // Load the file
-            LoadLandbToSide(side, filePath);
-
-            // Navigate to the specific entry
-            var grid = side == 'A' ? _gridViewA : _gridViewB;
-            if (grid == null || grid.Rows.Count == 0) return;
-
-            int targetRow = entryIndex * ROWS_PER_ENTRY;
-            // Determine which sub-row (field) within the entry
-            int fieldOffset;
-            switch (fieldName)
-            {
-                case "actor": fieldOffset = 1; break;
-                case "speechOriginal": fieldOffset = 2; break;
-                case "speechTranslation": fieldOffset = 3; break;
-                case "flags": fieldOffset = 4; break;
-                default: fieldOffset = 0; break;
-            }
-            int rowIndex = targetRow + fieldOffset;
-            if (rowIndex >= 0 && rowIndex < grid.Rows.Count)
-            {
-                SelectCell(grid, rowIndex);
-                Log($"Navigated to {Path.GetFileName(filePath)} entry {entryIndex + 1} ({fieldName})");
-            }
-        }
-
         // ========== Directory ==========
 
-        private void BrowseDirectory(char side)
+        private void BrowseDirectory()
         {
             using (var dlg = new FolderBrowserDialog { Description = "Select directory containing .landb files" })
             {
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {
-                    if (side == 'A')
-                    {
-                        _txtPathA.Text = dlg.SelectedPath; RefreshTree(_treeViewA, dlg.SelectedPath);
-                        AppData.settings.landbEditorLastDirA = dlg.SelectedPath;
-                    }
-                    else
-                    {
-                        _txtPathB.Text = dlg.SelectedPath; RefreshTree(_treeViewB, dlg.SelectedPath);
-                        AppData.settings.landbEditorLastDirB = dlg.SelectedPath;
-                    }
+                    _txtPath.Text = dlg.SelectedPath;
+                    RefreshTree(dlg.SelectedPath);
+                    AppData.settings.landbNormalizerLastDir = dlg.SelectedPath;
                     Settings.SaveConfig(AppData.settings);
-                    Log($"Directory {side}: {dlg.SelectedPath}");
+                    Log($"Directory: {dlg.SelectedPath}");
                 }
             }
         }
 
-        private void RefreshTree(TreeView tree, string rootDir)
+        private void RestoreLastDirectory()
         {
-            tree.Nodes.Clear();
+            string dir = AppData.settings.landbNormalizerLastDir;
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+            {
+                _txtPath.Text = dir;
+                RefreshTree(dir);
+                Log($"Restored directory: {dir}");
+            }
+        }
+
+        private void RefreshTree(string rootDir)
+        {
+            _treeView.Nodes.Clear();
             if (!Directory.Exists(rootDir)) return;
             var rootNode = new TreeNode(Path.GetFileName(rootDir)) { Tag = rootDir, Name = rootDir };
-            tree.Nodes.Add(rootNode);
+            _treeView.Nodes.Add(rootNode);
             PopulateTreeNodes(rootNode, rootDir);
             rootNode.Expand();
         }
@@ -610,241 +591,120 @@ namespace TTG_Tools
             catch (UnauthorizedAccessException) { }
         }
 
-        // ========== File load ==========
+        // ========== File load / save ==========
 
-        private void OnTreeSelect(char side, TreeNode node)
-        {
-            if (node?.Tag == null) return;
-            string path = node.Tag.ToString();
-            if (File.Exists(path)) LoadLandbToSide(side, path);
-        }
-
-        private void LoadLandbToSide(char side, string filePath)
+        private void LoadLandb(string filePath)
         {
             try
             {
+                this.Cursor = Cursors.WaitCursor;
+                _lblFileInfo.Text = $"Loading {Path.GetFileName(filePath)}...";
+                Application.DoEvents();
+
                 bool isUnicode, mapCredits; string errorMsg;
                 var landb = LandbWorker.LoadLandbFromFile(filePath, out isUnicode, out mapCredits, out errorMsg);
-                if (landb == null) { Log($"ERROR ({side}): {errorMsg}"); return; }
+                if (landb == null) { Log($"ERROR: {errorMsg}"); return; }
                 var texts = LandbWorker.LandbToCommonTextList(landb, mapCredits);
 
-                if (side == 'A')
-                {
-                    _filePathA = filePath; _landbA = landb; _textsA = texts;
-                    _isUnicodeA = isUnicode; _mapCreditsA = mapCredits; _isDirtyA = false;
-                    PopulateGrid(_gridViewA, texts);
-                    _lblFileInfoA.Text = $"{Path.GetFileName(filePath)} ({texts.Count} entries)" + (isUnicode ? " [U]" : "");
-                    _btnSaveA.Enabled = _btnSaveAsA.Enabled = true;
-                }
-                else
-                {
-                    _filePathB = filePath; _landbB = landb; _textsB = texts;
-                    _isUnicodeB = isUnicode; _mapCreditsB = mapCredits; _isDirtyB = false;
-                    PopulateGrid(_gridViewB, texts);
-                    _lblFileInfoB.Text = $"{Path.GetFileName(filePath)} ({texts.Count} entries)" + (isUnicode ? " [U]" : "");
-                    _btnSaveB.Enabled = _btnSaveAsB.Enabled = true;
-                }
-                Log($"Loaded ({side}): {Path.GetFileName(filePath)} - {texts.Count} entries");
+                _filePath = filePath;
+                _landb = landb;
+                _texts = texts;
+                _isUnicode = isUnicode;
+                _mapCredits = mapCredits;
+                _isDirty = false;
+                _previewDirty = true;
+
+                PopulateGrid(texts);
+                _lblFileInfo.Text = $"{Path.GetFileName(filePath)} ({texts.Count} entries)" + (isUnicode ? " [U]" : "");
+                _btnSave.Enabled = _btnSaveAs.Enabled = true;
+                HidePreview();
+                ClearNormalizeStats();
+                UpdateTitle();
+                Log($"Loaded: {Path.GetFileName(filePath)} - {texts.Count} entries");
             }
-            catch (Exception ex) { Log($"ERROR loading ({side}): {ex.Message}"); }
+            catch (Exception ex) { Log($"ERROR loading: {ex.Message}"); }
+            finally { this.Cursor = Cursors.Default; }
         }
 
-        private const int ROWS_PER_ENTRY = 5;
-
-        private static void PopulateGrid(DataGridView grid, List<CommonText> texts)
+        private void PopulateGrid(List<CommonText> texts)
         {
-            grid.Rows.Clear();
-            if (texts == null) return;
+            _gridView.SuspendLayout();
+            _gridView.Rows.Clear();
+            if (texts == null) { _gridView.ResumeLayout(); return; }
             foreach (var t in texts)
             {
-                // DataGridView GDI+ renderer requires \r\n for line breaks.
-                // Single \n renders as space.
                 string orig = (t.actorSpeechOriginal ?? "").Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
                 string trans = (t.actorSpeechTranslation ?? "").Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
-                grid.Rows.Add("langid", t.strNumber.ToString());
-                grid.Rows.Add("actor", t.actorName ?? "");
-                grid.Rows.Add("speechOriginal", orig);
-                grid.Rows.Add("speechTranslation", trans);
-                grid.Rows.Add("flags", t.flags ?? "00000000");
+                _gridView.Rows.Add("langid", t.strNumber.ToString());
+                _gridView.Rows.Add("actor", t.actorName ?? "");
+                _gridView.Rows.Add("speechOriginal", orig);
+                _gridView.Rows.Add("speechTranslation", trans);
+                _gridView.Rows.Add("flags", t.flags ?? "00000000");
             }
-            // Colour odd/even entries for visual grouping
             for (int i = 0; i < texts.Count; i++)
             {
-                var back = i % 2 == 0
-                    ? System.Drawing.SystemColors.Window
-                    : System.Drawing.Color.FromArgb(245, 248, 252);
+                var back = i % 2 == 0 ? SystemColors.Window : Color.FromArgb(245, 248, 252);
                 for (int r = 0; r < ROWS_PER_ENTRY; r++)
                 {
-                    var row = grid.Rows[i * ROWS_PER_ENTRY + r];
+                    var row = _gridView.Rows[i * ROWS_PER_ENTRY + r];
                     row.DefaultCellStyle.BackColor = back;
                     row.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
                 }
             }
-            // Force auto-size so multi-line rows get correct height
-            grid.AutoResizeRows();
+            _gridView.ResumeLayout();
+            _gridView.AutoResizeRows();
         }
 
-        // ========== Editing ==========
-
-        private void OnCellChanged(char side)
+        private void Save()
         {
-            if (side == 'A') _isDirtyA = true; else _isDirtyB = true;
-            UpdateTitle();
+            if (!_isDirty) { Log("No changes to save."); return; }
+            DoSave(_filePath, _filePath);
         }
 
-        private void OnCellValidating(char side, DataGridViewCellValidatingEventArgs e)
-        {
-            // flags is the 5th row (index 4) in each entry block
-            if (e.ColumnIndex == 1 && e.RowIndex % ROWS_PER_ENTRY == 4)
-            {
-                string v = e.FormattedValue?.ToString() ?? "";
-                if (v.Length > 8) { e.Cancel = true; Log($"ERROR ({side}): flags max 8 chars"); return; }
-                foreach (char c in v) { if (c != '0' && c != '1') { e.Cancel = true; Log($"ERROR ({side}): flags 0/1 only"); return; } }
-            }
-        }
-
-        // ========== Sync scroll ==========
-
-        private void OnSyncScrollToggled(object sender, EventArgs e)
-        {
-            if (_syncScrollMenu.Checked)
-            {
-                _gridViewA.Scroll += OnGridAScroll;
-                _gridViewB.Scroll += OnGridBScroll;
-                _gridViewA.SelectionChanged += OnGridASelection;
-                _gridViewB.SelectionChanged += OnGridBSelection;
-            }
-            else
-            {
-                _gridViewA.Scroll -= OnGridAScroll;
-                _gridViewB.Scroll -= OnGridBScroll;
-                _gridViewA.SelectionChanged -= OnGridASelection;
-                _gridViewB.SelectionChanged -= OnGridBSelection;
-            }
-        }
-
-        private void OnGridAScroll(object sender, ScrollEventArgs e)
-        {
-            if (_suppressScrollSync || !_syncScrollMenu.Checked || _gridViewB.RowCount == 0) return;
-            int entry = _gridViewA.FirstDisplayedScrollingRowIndex / ROWS_PER_ENTRY;
-            if (entry == _lastEntryA) return;
-            _lastEntryA = entry;
-            int target = entry * ROWS_PER_ENTRY;
-            if (target >= _gridViewB.RowCount) return;
-            _suppressScrollSync = true;
-            try { _gridViewB.FirstDisplayedScrollingRowIndex = target; } catch { }
-            finally { _suppressScrollSync = false; }
-        }
-
-        private void OnGridBScroll(object sender, ScrollEventArgs e)
-        {
-            if (_suppressScrollSync || !_syncScrollMenu.Checked || _gridViewA.RowCount == 0) return;
-            int entry = _gridViewB.FirstDisplayedScrollingRowIndex / ROWS_PER_ENTRY;
-            if (entry == _lastEntryB) return;
-            _lastEntryB = entry;
-            int target = entry * ROWS_PER_ENTRY;
-            if (target >= _gridViewA.RowCount) return;
-            _suppressScrollSync = true;
-            try { _gridViewA.FirstDisplayedScrollingRowIndex = target; } catch { }
-            finally { _suppressScrollSync = false; }
-        }
-
-        private void OnGridASelection(object sender, EventArgs e)
-        {
-            if (_suppressSelectionSync || !_syncScrollMenu.Checked) return;
-            if (_gridViewA.SelectedRows.Count == 0) return;
-            int idx = _gridViewA.SelectedRows[0].Index;
-            int entryStart = (idx / ROWS_PER_ENTRY) * ROWS_PER_ENTRY;
-            if (entryStart < _gridViewB.RowCount)
-            {
-                _suppressSelectionSync = true;
-                try
-                {
-                    _gridViewB.ClearSelection();
-                    for (int r = 0; r < ROWS_PER_ENTRY && entryStart + r < _gridViewB.RowCount; r++)
-                        _gridViewB.Rows[entryStart + r].Selected = true;
-                }
-                finally { _suppressSelectionSync = false; }
-            }
-        }
-
-        private void OnGridBSelection(object sender, EventArgs e)
-        {
-            if (_suppressSelectionSync || !_syncScrollMenu.Checked) return;
-            if (_gridViewB.SelectedRows.Count == 0) return;
-            int idx = _gridViewB.SelectedRows[0].Index;
-            int entryStart = (idx / ROWS_PER_ENTRY) * ROWS_PER_ENTRY;
-            if (entryStart < _gridViewA.RowCount)
-            {
-                _suppressSelectionSync = true;
-                try
-                {
-                    _gridViewA.ClearSelection();
-                    for (int r = 0; r < ROWS_PER_ENTRY && entryStart + r < _gridViewA.RowCount; r++)
-                        _gridViewA.Rows[entryStart + r].Selected = true;
-                }
-                finally { _suppressSelectionSync = false; }
-            }
-        }
-
-        // ========== Save ==========
-
-        private void Save(char side)
-        {
-            if (side == 'A')
-            {
-                if (!_isDirtyA) { Log("Side A: no changes."); return; }
-                DoSave(_filePathA, _filePathA, _landbA, _gridViewA, ref _textsA, ref _isDirtyA, _mapCreditsA, 'A');
-            }
-            else
-            {
-                if (!_isDirtyB) { Log("Side B: no changes."); return; }
-                DoSave(_filePathB, _filePathB, _landbB, _gridViewB, ref _textsB, ref _isDirtyB, _mapCreditsB, 'B');
-            }
-        }
-
-        private void SaveAs(char side)
+        private void SaveAs()
         {
             using (var dlg = new SaveFileDialog { Filter = "Landb files (*.landb)|*.landb", DefaultExt = ".landb" })
             {
                 if (dlg.ShowDialog(this) == DialogResult.OK)
-                {
-                    if (side == 'A') DoSave(_filePathA, dlg.FileName, _landbA, _gridViewA, ref _textsA, ref _isDirtyA, _mapCreditsA, 'A');
-                    else DoSave(_filePathB, dlg.FileName, _landbB, _gridViewB, ref _textsB, ref _isDirtyB, _mapCreditsB, 'B');
-                }
+                    DoSave(_filePath, dlg.FileName);
             }
         }
 
-        private void DoSave(string origPath, string outPath, LandbClass landb, DataGridView grid,
-            ref List<CommonText> texts, ref bool isDirty, bool mapCredits, char side)
+        private void DoSave(string origPath, string outPath)
         {
             try
             {
-                texts = ReadTextsFromGrid(grid, texts);
-                string result = LandbWorker.SaveLandbToFile(origPath, outPath, landb, texts, mapCredits);
+                _texts = ReadTextsFromGrid();
+                string result = LandbWorker.SaveLandbToFile(origPath, outPath, _landb, _texts, _mapCredits);
                 Log(result);
                 if (!result.Contains("error") && !result.Contains("Error"))
                 {
-                    isDirty = false;
-                    if (outPath != origPath) { if (side == 'A') _filePathA = outPath; else _filePathB = outPath; }
+                    _isDirty = false;
+                    if (outPath != origPath) _filePath = outPath;
                     UpdateTitle();
                 }
             }
-            catch (Exception ex) { Log($"ERROR saving ({side}): {ex.Message}"); }
+            catch (Exception ex) { Log($"ERROR saving: {ex.Message}"); }
         }
 
-        private static List<CommonText> ReadTextsFromGrid(DataGridView grid, List<CommonText> existing)
+        private List<CommonText> ReadTextsFromGrid()
         {
             var result = new List<CommonText>();
-            int count = Math.Min(grid.Rows.Count / ROWS_PER_ENTRY, existing?.Count ?? 0);
+            int count = Math.Min(_gridView.Rows.Count / ROWS_PER_ENTRY, _texts?.Count ?? 0);
             for (int i = 0; i < count; i++)
             {
-                var t = existing[i];
+                var t = _texts[i];
                 int baseRow = i * ROWS_PER_ENTRY;
-                // Grid stores \r\n for display; convert back to \n for saving
-                string trans = (grid.Rows[baseRow + 3].Cells[1].Value?.ToString() ?? "").Replace("\r\n", "\n");
-                t.actorSpeechTranslation = trans;
-                t.flags = (grid.Rows[baseRow + 4].Cells[1].Value?.ToString() ?? "00000000");
+                string orig = (_gridView.Rows[baseRow + 2].Cells[1].Value?.ToString() ?? "").Replace("\r\n", "\n");
+                string trans = (_gridView.Rows[baseRow + 3].Cells[1].Value?.ToString() ?? "").Replace("\r\n", "\n");
+                t.actorSpeechOriginal = orig;
+                // LandbWorker.ReplaceStrings writes actorSpeechTranslation to file.
+                // If user only edited speechOriginal (not translation), propagate it.
+                if (!string.Equals(trans, _texts[i].actorSpeechTranslation, StringComparison.Ordinal))
+                    t.actorSpeechTranslation = trans;       // user edited translation
+                else
+                    t.actorSpeechTranslation = orig;        // user may have edited original
+                t.flags = (_gridView.Rows[baseRow + 4].Cells[1].Value?.ToString() ?? "00000000");
                 var sb = new StringBuilder();
                 foreach (char c in t.flags) if (c == '0' || c == '1') sb.Append(c);
                 t.flags = sb.ToString().PadLeft(8, '0');
@@ -855,94 +715,458 @@ namespace TTG_Tools
 
         // ========== Character extraction ==========
 
-        private void ExportAllChars(char side)
+        private void ExportAllChars()
         {
-            var texts = side == 'A' ? _textsA : _textsB;
-            if (texts == null || texts.Count == 0)
-            {
-                Log($"Side {side}: no data loaded.");
-                return;
-            }
+            if (_texts == null || _texts.Count == 0) { Log("No data loaded."); return; }
 
             using (var dlg = new SaveFileDialog
             {
                 Filter = "Text files (*.txt)|*.txt",
                 DefaultExt = ".txt",
-                FileName = $"chars_side_{char.ToLower(side)}.txt"
+                FileName = "chars_export.txt"
             })
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
-
                 try
                 {
                     var charSet = new HashSet<string>();
-                    foreach (var t in texts)
+                    foreach (var t in _texts)
                     {
                         if (string.IsNullOrEmpty(t.actorSpeechOriginal)) continue;
                         foreach (char c in t.actorSpeechOriginal)
                             charSet.Add(c.ToString());
                     }
-
-                    // Sort: common chars first, then by codepoint
                     var sorted = charSet
                         .OrderBy(s => s.Length > 0 && char.IsLetterOrDigit(s[0]) ? 0 : 1)
                         .ThenBy(s => (int)(s.Length > 0 ? s[0] : 0))
                         .ToList();
-
                     using (var sw = new StreamWriter(dlg.FileName, false, new UTF8Encoding(true)))
                     {
-                        foreach (var ch in sorted)
-                            sw.Write(ch);
+                        foreach (var ch in sorted) sw.Write(ch);
                     }
-
-                    Log($"Side {side}: exported {charSet.Count} unique chars → {Path.GetFileName(dlg.FileName)}");
+                    Log($"Exported {charSet.Count} unique chars → {Path.GetFileName(dlg.FileName)}");
                 }
-                catch (Exception ex)
-                {
-                    Log($"ERROR exporting chars ({side}): {ex.Message}");
-                }
+                catch (Exception ex) { Log($"ERROR exporting chars: {ex.Message}"); }
             }
         }
 
+        // ========== Normalization ==========
+
+        private bool AnyNormalizationEnabled =>
+            _checkDotToChinese.Checked || _checkRemoveCjkBlanks.Checked ||
+            _checkAutoWrap.Checked || _checkNormalizePunctuation.Checked;
+
+        private void InvalidatePreview() { _previewDirty = true; ClearNormalizeStats(); }
+
+        private void ClearNormalizeStats() { _lblNormalizeStats.Text = ""; }
+
+        // ---- Checkbox sync (form ↔ menu) ----
+
+        private void OnCheckDotToChineseChanged(object sender, EventArgs e)
+        {
+            AppData.settings.replaceDotToChinesePeriodInImport = _checkDotToChinese.Checked;
+            _menuCheckDotToChinese.Checked = _checkDotToChinese.Checked;
+            Settings.SaveConfig(AppData.settings);
+            InvalidatePreview();
+        }
+        private void OnCheckRemoveCjkBlanksChanged(object sender, EventArgs e)
+        {
+            AppData.settings.removeBlanksBetweenCjkCharsInImport = _checkRemoveCjkBlanks.Checked;
+            _menuCheckRemoveCjkBlanks.Checked = _checkRemoveCjkBlanks.Checked;
+            Settings.SaveConfig(AppData.settings);
+            InvalidatePreview();
+        }
+        private void OnCheckAutoWrapChanged(object sender, EventArgs e)
+        {
+            AppData.settings.autoInsertSubtitleNewlineInImport = _checkAutoWrap.Checked;
+            _menuCheckAutoWrap.Checked = _checkAutoWrap.Checked;
+            Settings.SaveConfig(AppData.settings);
+            InvalidatePreview();
+        }
+        private void OnCheckNormalizePunctuationChanged(object sender, EventArgs e)
+        {
+            AppData.settings.normalizePunctuationBeforeNewlineInImport = _checkNormalizePunctuation.Checked;
+            _menuCheckNormalizePunctuation.Checked = _checkNormalizePunctuation.Checked;
+            Settings.SaveConfig(AppData.settings);
+            InvalidatePreview();
+        }
+
+        // Menu → form sync
+        private void OnMenuCheckDotToChineseChanged(object sender, EventArgs e)
+        {
+            _checkDotToChinese.Checked = _menuCheckDotToChinese.Checked;
+        }
+        private void OnMenuCheckRemoveCjkBlanksChanged(object sender, EventArgs e)
+        {
+            _checkRemoveCjkBlanks.Checked = _menuCheckRemoveCjkBlanks.Checked;
+        }
+        private void OnMenuCheckAutoWrapChanged(object sender, EventArgs e)
+        {
+            _checkAutoWrap.Checked = _menuCheckAutoWrap.Checked;
+        }
+        private void OnMenuCheckNormalizePunctuationChanged(object sender, EventArgs e)
+        {
+            _checkNormalizePunctuation.Checked = _menuCheckNormalizePunctuation.Checked;
+        }
+
+        // ---- Normalize a single text ----
+
+        internal static string NormalizeTranslation(string text,
+            bool dotToChinese, bool removeCjkBlanks, bool autoWrap, bool normalizePunctuation)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            string result = Methods.ConvertLiteralNewlineMarkers(text);
+
+            if (normalizePunctuation)
+                result = Methods.TransformOutsideMarkers(result, Methods.NormalizePunctuationBeforeNewline);
+
+            if (!Methods.ContainsCjkCharacters(result)) return autoWrap
+                ? Methods.ApplyAutoSubtitleWrapAfterReplace(result) : result;
+
+            if (removeCjkBlanks)
+                result = Methods.TransformOutsideMarkers(result, Methods.RemoveWhitespacesBetweenCjkCharacters);
+
+            if (dotToChinese)
+                result = Methods.TransformOutsideMarkers(result, Methods.ReplaceDotsNearCjkWithChinesePeriod);
+
+            if (autoWrap)
+                result = Methods.ApplyAutoSubtitleWrapAfterReplace(result);
+
+            return result;
+        }
+
+        // ---- Preview ----
+
+        private struct NormalizePreviewEntry
+        {
+            public int EntryIndex;
+            public string Before;
+            public string After;
+        }
+
+        private void RebuildPreview()
+        {
+            _previewEntries = new List<NormalizePreviewEntry>();
+            if (_texts == null || _texts.Count == 0) return;
+
+            bool dotToChinese = _checkDotToChinese.Checked;
+            bool removeCjkBlanks = _checkRemoveCjkBlanks.Checked;
+            bool autoWrap = _checkAutoWrap.Checked;
+            bool normalizePunctuation = _checkNormalizePunctuation.Checked;
+
+            if (!dotToChinese && !removeCjkBlanks && !autoWrap && !normalizePunctuation) return;
+
+            for (int i = 0; i < _texts.Count; i++)
+            {
+                string translation = _texts[i].actorSpeechTranslation ?? "";
+                if (string.IsNullOrEmpty(translation)) continue;
+
+                string normalized = NormalizeTranslation(translation,
+                    dotToChinese, removeCjkBlanks, autoWrap, normalizePunctuation);
+
+                if (!string.Equals(translation, normalized, StringComparison.Ordinal))
+                {
+                    _previewEntries.Add(new NormalizePreviewEntry
+                    {
+                        EntryIndex = i,
+                        Before = translation,
+                        After = normalized
+                    });
+                }
+            }
+
+            _previewDirty = false;
+        }
+
+        private void OnPreviewChanges(object sender, EventArgs e)
+        {
+            if (_texts == null || _texts.Count == 0) { Log("No file loaded."); return; }
+            if (!AnyNormalizationEnabled) { Log("No normalization options selected."); return; }
+
+            if (_previewDirty) RebuildPreview();
+
+            _listPreview.Items.Clear();
+
+            if (_previewEntries.Count == 0)
+            {
+                _lblPreviewHeader.Text = "Preview: 0 texts would be modified — all text is already normalized.";
+                ShowPreview();
+                _lblNormalizeStats.Text = "No changes needed.";
+                return;
+            }
+
+            // Stats
+            int dotsChanged = 0, blanksRemoved = 0, newlinesInserted = 0, punctMoved = 0;
+            foreach (var entry in _previewEntries)
+            {
+                int beforeNewlines = entry.Before.Split('\n').Length;
+                int afterNewlines = entry.After.Split('\n').Length;
+                if (afterNewlines > beforeNewlines) newlinesInserted += (afterNewlines - beforeNewlines);
+                if (entry.Before.Contains(".") && entry.After.Contains("。")) dotsChanged++;
+                // Count blanks removed: count spaces in "before" that don't appear in "after"
+                int blankDiff = entry.Before.Count(c => c == ' ') - entry.After.Count(c => c == ' ');
+                if (blankDiff > 0) blanksRemoved += blankDiff;
+                // Count punctuation moved: entries modified by NormalizePunctuationBeforeNewline
+                if (_checkNormalizePunctuation.Checked && entry.Before.Contains("\n"))
+                    punctMoved++;
+            }
+
+            var statParts = new List<string>();
+            statParts.Add($"{_previewEntries.Count} texts would be modified");
+            if (dotsChanged > 0) statParts.Add($"{dotsChanged} dots → 。");
+            if (blanksRemoved > 0) statParts.Add($"{blanksRemoved} CJK blanks removed");
+            if (newlinesInserted > 0) statParts.Add($"{newlinesInserted} newlines inserted");
+            if (punctMoved > 0) statParts.Add($"{punctMoved} punctuation normalized");
+            _lblNormalizeStats.Text = string.Join(" · ", statParts);
+
+            // Populate list (max 200 to avoid UI freeze)
+            int maxShow = Math.Min(_previewEntries.Count, 200);
+            for (int i = 0; i < maxShow; i++)
+            {
+                var entry = _previewEntries[i];
+                string beforeDisplay = TruncateForDisplay(entry.Before, 55);
+                string afterDisplay = TruncateForDisplay(entry.After, 55);
+                var item = new ListViewItem((entry.EntryIndex + 1).ToString());
+                item.SubItems.Add(beforeDisplay);
+                item.SubItems.Add(afterDisplay);
+                item.Tag = entry.EntryIndex;
+                _listPreview.Items.Add(item);
+            }
+
+            _lblPreviewHeader.Text = $"Preview: {_previewEntries.Count} texts would be modified" +
+                (maxShow < _previewEntries.Count ? $" (showing first {maxShow})" : "");
+            ShowPreview();
+        }
+
+        private static string TruncateForDisplay(string text, int maxLen)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            string display = text.Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");
+            if (display.Length <= maxLen) return display;
+            return display.Substring(0, maxLen) + "…";
+        }
+
+        private void ShowPreview()
+        {
+            _grpNormalize.Visible = false;
+            _panelPreview.Visible = true;
+            _panelPreview.BringToFront();
+        }
+
+        private void HidePreview()
+        {
+            _panelPreview.Visible = false;
+            _grpNormalize.Visible = true;
+            _grpNormalize.BringToFront();
+        }
+
+        private void OnCollapsePreview(object sender, EventArgs e) => HidePreview();
+
+        private void OnPreviewDoubleClick(object sender, EventArgs e)
+        {
+            if (_listPreview.SelectedItems.Count == 0) return;
+            int entryIndex = (int)_listPreview.SelectedItems[0].Tag;
+            int targetRow = entryIndex * ROWS_PER_ENTRY + 3; // speechTranslation row
+            SelectCell(_gridView, targetRow);
+            Log($"Navigated to entry {entryIndex + 1}");
+        }
+
+        private void OnPreviewSelectionChanged(object sender, EventArgs e)
+        {
+            _btnApplySelected.Enabled = _listPreview.SelectedItems.Count > 0;
+        }
+
+        // ---- Apply Selected ----
+
+        private void OnApplySelected(object sender, EventArgs e)
+        {
+            if (_listPreview.SelectedItems.Count == 0) return;
+            int entryIndex = (int)_listPreview.SelectedItems[0].Tag;
+
+            bool dotToChinese = _checkDotToChinese.Checked;
+            bool removeCjkBlanks = _checkRemoveCjkBlanks.Checked;
+            bool autoWrap = _checkAutoWrap.Checked;
+            bool normalizePunctuation = _checkNormalizePunctuation.Checked;
+
+            int baseRow = entryIndex * ROWS_PER_ENTRY;
+            string currentTrans = (_gridView.Rows[baseRow + 3].Cells[1].Value?.ToString() ?? "")
+                .Replace("\r\n", "\n");
+            string normalized = NormalizeTranslation(currentTrans,
+                dotToChinese, removeCjkBlanks, autoWrap, normalizePunctuation);
+
+            if (!string.Equals(currentTrans, normalized, StringComparison.Ordinal))
+            {
+                _gridView.Rows[baseRow + 3].Cells[1].Value = normalized.Replace("\n", "\r\n");
+                _gridView.Rows[baseRow + 3].DefaultCellStyle.BackColor = Color.FromArgb(255, 253, 231);
+                _isDirty = true;
+                _previewDirty = true;
+                UpdateTitle();
+                Log($"Applied to entry {entryIndex + 1} (grid only, unsaved)");
+
+                var timer = new Timer { Interval = 2000 };
+                timer.Tick += (s, args) =>
+                {
+                    timer.Stop(); timer.Dispose();
+                    var back = entryIndex % 2 == 0 ? SystemColors.Window : Color.FromArgb(245, 248, 252);
+                    if (baseRow + 3 < _gridView.Rows.Count)
+                        _gridView.Rows[baseRow + 3].DefaultCellStyle.BackColor = back;
+                };
+                timer.Start();
+            }
+        }
+
+        // ---- Apply ----
+
+        private void OnApplyNormalization(object sender, EventArgs e)
+        {
+            if (_texts == null || _texts.Count == 0) { Log("No file loaded."); return; }
+            if (!AnyNormalizationEnabled) { Log("No normalization options selected."); return; }
+
+            if (_previewDirty) RebuildPreview();
+
+            if (_previewEntries.Count == 0)
+            {
+                Log("Normalization: all text is already normalized. No changes applied.");
+                HidePreview();
+                return;
+            }
+
+            bool dotToChinese = _checkDotToChinese.Checked;
+            bool removeCjkBlanks = _checkRemoveCjkBlanks.Checked;
+            bool autoWrap = _checkAutoWrap.Checked;
+            bool normalizePunctuation = _checkNormalizePunctuation.Checked;
+
+            int modified = 0;
+            foreach (var entry in _previewEntries)
+            {
+                int baseRow = entry.EntryIndex * ROWS_PER_ENTRY;
+                string currentTrans = (_gridView.Rows[baseRow + 3].Cells[1].Value?.ToString() ?? "")
+                    .Replace("\r\n", "\n");
+                string normalized = NormalizeTranslation(currentTrans,
+                    dotToChinese, removeCjkBlanks, autoWrap, normalizePunctuation);
+
+                if (!string.Equals(currentTrans, normalized, StringComparison.Ordinal))
+                {
+                    _gridView.Rows[baseRow + 3].Cells[1].Value = normalized.Replace("\n", "\r\n");
+                    // Highlight briefly
+                    _gridView.Rows[baseRow + 3].DefaultCellStyle.BackColor = Color.FromArgb(255, 253, 231);
+                    modified++;
+                }
+            }
+
+            _isDirty = true;
+            _previewDirty = true;
+            UpdateTitle();
+            HidePreview();
+
+            // Build summary
+            var parts = new List<string> { $"{modified} texts modified" };
+            if (dotToChinese) parts.Add("dots→。");
+            if (removeCjkBlanks) parts.Add("CJK blanks removed");
+            if (autoWrap) parts.Add("auto-wrapped");
+            if (normalizePunctuation) parts.Add("punctuation normalized");
+            Log($"Normalization applied: {string.Join(", ", parts)}. Use Save to commit or reload to discard.");
+
+            // Reset highlights after 2 seconds
+            var timer = new Timer { Interval = 2000 };
+            timer.Tick += (s, args) =>
+            {
+                timer.Stop();
+                timer.Dispose();
+                foreach (var entry in _previewEntries)
+                {
+                    int baseRow = entry.EntryIndex * ROWS_PER_ENTRY;
+                    if (baseRow + 3 < _gridView.Rows.Count)
+                    {
+                        var back = entry.EntryIndex % 2 == 0 ? SystemColors.Window : Color.FromArgb(245, 248, 252);
+                        _gridView.Rows[baseRow + 3].DefaultCellStyle.BackColor = back;
+                    }
+                }
+            };
+            timer.Start();
+        }
+
+        // ========== Form close ==========
+
         private void OnFormClosing(object sender, FormClosingEventArgs e)
         {
-            var dirty = new List<string>();
-            if (_isDirtyA) dirty.Add("Side A");
-            if (_isDirtyB) dirty.Add("Side B");
-            if (dirty.Count > 0)
+            if (_isDirty && _texts != null)
             {
-                var r = MessageBox.Show($"Unsaved: {string.Join(", ", dirty)}.\n\nSave before closing?", "Unsaved Changes",
+                var r = MessageBox.Show("Unsaved changes.\n\nSave before closing?", "Unsaved Changes",
                     MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
-                if (r == DialogResult.Yes) { if (_isDirtyA) Save('A'); if (_isDirtyB) Save('B'); }
+                if (r == DialogResult.Yes) Save();
                 else if (r == DialogResult.Cancel) { e.Cancel = true; return; }
             }
-            // Clean up modeless dialogs
             if (_findReplaceDlg != null && !_findReplaceDlg.IsDisposed)
             {
                 _findReplaceDlg.Close();
                 _findReplaceDlg.Dispose();
                 _findReplaceDlg = null;
             }
-            if (_findInFilesDlg != null && !_findInFilesDlg.IsDisposed)
-            {
-                _findInFilesDlg.Close();
-                _findInFilesDlg.Dispose();
-                _findInFilesDlg = null;
-            }
         }
 
         private void UpdateTitle()
         {
-            string t = "Landb Editor";
-            if (_isDirtyA) t += " [A*]";
-            if (_isDirtyB) t += " [B*]";
-            Text = t;
+            Text = "Landb Editor" + (_isDirty ? " [*]" : "");
         }
 
-        private void Log(string msg)
+        private void Log(string message)
         {
-            if (_txtLog.IsDisposed) return;
-            _txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}\r\n");
+            if (_txtLog.InvokeRequired)
+                _txtLog.Invoke(new Action<string>(Log), message);
+            else
+            {
+                _txtLog.AppendText(message + Environment.NewLine);
+                _txtLog.SelectionStart = _txtLog.TextLength;
+                _txtLog.ScrollToCaret();
+            }
+        }
+
+        // ========== Normalize in Files ==========
+
+        private void OnNormalizeInFiles(object sender, EventArgs e)
+        {
+            using (var dlg = new NormalizeInFilesDialog(Log,
+                _checkDotToChinese.Checked, _checkRemoveCjkBlanks.Checked,
+                _checkAutoWrap.Checked, _checkNormalizePunctuation.Checked))
+            {
+                dlg.ShowDialog(this);
+            }
+        }
+
+        // ========== Entry navigation ==========
+
+        private void OnGoToEntry(object sender, EventArgs e)
+        {
+            if (!int.TryParse(_txtEntryId.Text.Trim(), out int entryId) || entryId < 1)
+            {
+                Log("Invalid entry number.");
+                return;
+            }
+            int entryIndex = entryId - 1;
+            if (_texts == null || entryIndex >= _texts.Count)
+            {
+                Log($"Entry {entryId} out of range (1–{_texts?.Count ?? 0}).");
+                return;
+            }
+            int targetRow = entryIndex * ROWS_PER_ENTRY + 1; // actor row
+            SelectCell(_gridView, targetRow);
+            Log($"Navigated to entry {entryId}");
+        }
+
+        private void OnEntryIdKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true;
+                OnGoToEntry(sender, e);
+            }
+        }
+
+        private void _grpNormalize_Enter(object sender, EventArgs e)
+        {
+
         }
     }
 }

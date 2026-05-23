@@ -88,6 +88,7 @@ namespace TTG_Tools
         private System.Collections.Generic.List<string> _scanTextFilePaths;
         private string _landbEditorLastDirA;
         private string _landbEditorLastDirB;
+        private string _landbNormalizerLastDir;
 
         [XmlAttribute("pathForInputFolder")]
         public string pathForInputFolder
@@ -706,6 +707,13 @@ namespace TTG_Tools
         {
             get { return _landbEditorLastDirB; }
             set { _landbEditorLastDirB = value; }
+        }
+
+        [XmlAttribute("landbNormalizerLastDir")]
+        public string landbNormalizerLastDir
+        {
+            get { return _landbNormalizerLastDir ?? ""; }
+            set { _landbNormalizerLastDir = value; }
         }
 
         public Settings(

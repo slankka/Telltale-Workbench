@@ -22,6 +22,7 @@ namespace TTG_Tools
             this._lblReplace = new System.Windows.Forms.Label();
             this._txtReplace = new System.Windows.Forms.TextBox();
             this._chkMatchCase = new System.Windows.Forms.CheckBox();
+            this._chkRegex = new System.Windows.Forms.CheckBox();
             this._grpSide = new System.Windows.Forms.GroupBox();
             this._radioSideB = new System.Windows.Forms.RadioButton();
             this._radioSideA = new System.Windows.Forms.RadioButton();
@@ -70,6 +71,14 @@ namespace TTG_Tools
             this._chkMatchCase.Size = new System.Drawing.Size(82, 17);
             this._chkMatchCase.TabIndex = 4;
             this._chkMatchCase.Text = "Match case";
+
+            // _chkRegex
+            this._chkRegex.AutoSize = true;
+            this._chkRegex.Location = new System.Drawing.Point(110, 70);
+            this._chkRegex.Name = "_chkRegex";
+            this._chkRegex.Size = new System.Drawing.Size(80, 17);
+            this._chkRegex.TabIndex = 11;
+            this._chkRegex.Text = "Use Regex (.*)";
 
             // _grpSide
             this._grpSide.Controls.Add(this._radioSideB);
@@ -155,6 +164,7 @@ namespace TTG_Tools
             this.Controls.Add(this._btnReplace);
             this.Controls.Add(this._btnFindNext);
             this.Controls.Add(this._grpSide);
+            this.Controls.Add(this._chkRegex);
             this.Controls.Add(this._chkMatchCase);
             this.Controls.Add(this._txtReplace);
             this.Controls.Add(this._lblReplace);
@@ -185,6 +195,7 @@ namespace TTG_Tools
         private System.Windows.Forms.Label _lblReplace;
         private System.Windows.Forms.TextBox _txtReplace;
         private System.Windows.Forms.CheckBox _chkMatchCase;
+        private System.Windows.Forms.CheckBox _chkRegex;
         private System.Windows.Forms.GroupBox _grpSide;
         private System.Windows.Forms.RadioButton _radioSideA;
         private System.Windows.Forms.RadioButton _radioSideB;

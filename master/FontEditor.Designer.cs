@@ -281,14 +281,14 @@ namespace TTG_Tools
             // 
             this.landbEditorToolStripMenuItem.Name = "landbEditorToolStripMenuItem";
             this.landbEditorToolStripMenuItem.Size = new System.Drawing.Size(178, 22);
-            this.landbEditorToolStripMenuItem.Text = "Landb Editor";
+            this.landbEditorToolStripMenuItem.Text = "Landb Reviewer";
             this.landbEditorToolStripMenuItem.Click += new System.EventHandler(this.landbEditorToolStripMenuItem_Click);
             // 
             // landbNormalizerToolStripMenuItem
             // 
             this.landbNormalizerToolStripMenuItem.Name = "landbNormalizerToolStripMenuItem";
             this.landbNormalizerToolStripMenuItem.Size = new System.Drawing.Size(178, 22);
-            this.landbNormalizerToolStripMenuItem.Text = "Landb Normalizer";
+            this.landbNormalizerToolStripMenuItem.Text = "Landb Editor";
             this.landbNormalizerToolStripMenuItem.Click += new System.EventHandler(this.landbNormalizerToolStripMenuItem_Click);
             // 
             // settingsToolStripMenuItem

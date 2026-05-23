@@ -68,7 +68,9 @@
             this.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.MaximizeBox = false;
             this.Name = "About";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "About TTG Font Creator";
+            this.CancelButton = this.buttonClose;
             this.ResumeLayout(false);
 
         }

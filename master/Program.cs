@@ -22,7 +22,7 @@ namespace TTG_Tools
             {
                 FirstTime = false;
                 AppData.LoadConfig();
-                Application.Run(new FontEditor());
+                Application.Run(new MainLauncher());
             }
             else
             {
