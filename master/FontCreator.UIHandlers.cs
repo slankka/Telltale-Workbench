@@ -9,14 +9,14 @@ using System.Windows.Forms;
 
 namespace TTG_Tools
 {
-    public partial class FontEditor
+    public partial class FontCreator
     {
         private void exitToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Close();
         }
 
-        private void FontEditor_Load(object sender, EventArgs e)
+        private void FontCreator_Load(object sender, EventArgs e)
         {
             edited = false; //Tell a program about first launch window form so font is not modified.
 
@@ -38,7 +38,7 @@ namespace TTG_Tools
             RefreshProfileComboBox(profiles, null);
         }
 
-        private void FontEditor_FormClosing(object sender, FormClosingEventArgs e)
+        private void FontCreator_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (edited == true)
             {
@@ -886,6 +886,7 @@ namespace TTG_Tools
             {
                 font.FntInfoSize = val;
                 fillTableofCoordinates(font, false);
+                edited = true;
                 textBoxLogOutput.AppendText($"[Size] Set FntInfoSize to {val}\r\n");
             }
         }
@@ -902,6 +903,7 @@ namespace TTG_Tools
             {
                 font.FntLineHeight = val;
                 fillTableofCoordinates(font, false);
+                edited = true;
                 textBoxLogOutput.AppendText($"[LineHgt] Set FntLineHeight to {val}\r\n");
             }
         }
@@ -924,6 +926,7 @@ namespace TTG_Tools
                     font.glyph.chars[i].CharHeight = val;
             }
             fillTableofCoordinates(font, false);
+            edited = true;
             textBoxLogOutput.AppendText($"[Height] Set all chars CharHeight to {val}\r\n");
         }
 
@@ -947,6 +950,7 @@ namespace TTG_Tools
                     font.glyph.charsNew[i].Channel = val;
             }
             fillTableofCoordinates(font, false);
+            edited = true;
             textBoxLogOutput.AppendText($"[Chnl] Set all chars Channel to {val}\r\n");
         }
 
@@ -960,6 +964,7 @@ namespace TTG_Tools
             }
             if (!float.TryParse(textBoxBaseAdj.Text, out float val)) return;
             font.FntBaseLine = val;
+            edited = true;
             textBoxLogOutput.AppendText($"[Base] Set FntBaseLine (FNT base) to {val}\r\n");
         }
 

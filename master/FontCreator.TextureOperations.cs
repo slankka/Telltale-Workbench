@@ -9,7 +9,7 @@ using TTG_Tools.ClassesStructs;
 
 namespace TTG_Tools
 {
-    public partial class FontEditor
+    public partial class FontCreator
     {
         private void ReplaceTexture(string DdsFile, ClassesStructs.TextureClass.OldT3Texture tex)
         {

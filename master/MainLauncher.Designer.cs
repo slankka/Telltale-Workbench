@@ -28,7 +28,7 @@ namespace TTG_Tools
             this._pnlScanner = new System.Windows.Forms.Panel();
             this._lblTitle4 = new System.Windows.Forms.Label();
             this._lblDesc4 = new System.Windows.Forms.Label();
-            this._pnlSettings = new System.Windows.Forms.Panel();
+            this._pnlFontCreator = new System.Windows.Forms.Panel();
             this._lblTitle5 = new System.Windows.Forms.Label();
             this._lblDesc5 = new System.Windows.Forms.Label();
             this._pnlArchivePacker = new System.Windows.Forms.Panel();
@@ -37,7 +37,7 @@ namespace TTG_Tools
             this._pnlAutoPacker = new System.Windows.Forms.Panel();
             this._lblTitle7 = new System.Windows.Forms.Label();
             this._lblDesc7 = new System.Windows.Forms.Label();
-            this._pnlQuickTools = new System.Windows.Forms.Panel();
+            this._pnlSettings = new System.Windows.Forms.Panel();
             this._lblTitle8 = new System.Windows.Forms.Label();
             this._lblDesc8 = new System.Windows.Forms.Label();
             this._pnlAbout = new System.Windows.Forms.Panel();
@@ -75,9 +75,9 @@ namespace TTG_Tools
                 "Ttarch2 Scanner (beta)", "Scan and analyze archive structures", 1, 0);
             this._pnlScanner.Click += (s, e) => OpenTool<Ttarch2Scanner>();
             // --- Panel 5: Font Creator ---
-            SetupCard(this._pnlSettings, this._lblTitle5, this._lblDesc5,
+            SetupCard(this._pnlFontCreator, this._lblTitle5, this._lblDesc5,
                 "Font Creator", "Create & edit .font texture files", 1, 1);
-            this._pnlSettings.Click += (s, e) => OpenTool<FontEditor>();
+            this._pnlFontCreator.Click += (s, e) => OpenTool<FontCreator>();
             // --- Panel 6: Archive Packer ---
             SetupCard(this._pnlArchivePacker, this._lblTitle6, this._lblDesc6,
                 "Archive Packer", "Create .ttarch / .ttarch2 archives", 1, 2);
@@ -87,15 +87,15 @@ namespace TTG_Tools
                 "Auto (De)Packer", "Decrypt, unpack & repack game assets (LANGDB, D3DTX, LANDb, Vector Fonts, Lua)", 2, 0);
             this._pnlAutoPacker.Click += (s, e) => OpenTool<AutoPacker>();
             // --- Panel 8: Settings ---
-            SetupCard(this._pnlQuickTools, this._lblTitle8, this._lblDesc8,
+            SetupCard(this._pnlSettings, this._lblTitle8, this._lblDesc8,
                 "Settings", "Configure tool settings & preferences", 2, 1);
-            this._pnlQuickTools.Click += (s, e) => OpenSettings();
+            this._pnlSettings.Click += (s, e) => OpenSettings();
             // --- Panel 9: About ---
             SetupCard(this._pnlAbout, this._lblTitle9, this._lblDesc9,
                 "About", "Version info & credits", 2, 2);
             this._pnlAbout.Click += (s, e) =>
             {
-                var about = new About();
+                var about = new AboutMain();
                 about.ShowDialog(this);
             };
 
@@ -109,7 +109,7 @@ namespace TTG_Tools
             this.MaximizeBox = false;
             this.Name = "MainLauncher";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "TTG Text Mate";
+            this.Text = "Telltale Workbench";
 
             this._mainGrid.ResumeLayout(false);
             this.ResumeLayout(false);
@@ -144,7 +144,7 @@ namespace TTG_Tools
 
         private System.Windows.Forms.TableLayoutPanel _mainGrid;
         private System.Windows.Forms.Panel _pnlArchiveUnpacker, _pnlLandbEditor, _pnlLandbReviewer,
-            _pnlScanner, _pnlSettings, _pnlArchivePacker, _pnlAutoPacker, _pnlQuickTools, _pnlAbout;
+            _pnlScanner, _pnlFontCreator, _pnlArchivePacker, _pnlAutoPacker, _pnlSettings, _pnlAbout;
         private System.Windows.Forms.Label _lblTitle1, _lblTitle2, _lblTitle3, _lblTitle4, _lblTitle5,
             _lblTitle6, _lblTitle7, _lblTitle8, _lblTitle9;
         private System.Windows.Forms.Label _lblDesc1, _lblDesc2, _lblDesc3, _lblDesc4, _lblDesc5,

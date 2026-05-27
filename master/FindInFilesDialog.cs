@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -21,8 +22,9 @@ namespace TTG_Tools
         private BackgroundWorker _replaceWorker;
         private List<FindInFilesMatch> _allMatches;
         private string _currentRootDir;
-
-        // Callbacks for refreshing editor state after replace
+        private string _dirA;
+        private string _dirB;
+        private char _currentSide;
         internal Func<string, char, bool> OnFileNeedsRefresh;
         internal Action<string> OnLogMessage;
 
@@ -30,24 +32,41 @@ namespace TTG_Tools
         {
             InitializeComponent();
             InitWorker();
+            InitResultContextMenu();
             _chkSpeechTranslation.Checked = true;
             _chkSpeechOriginal.Checked = true;
+            _lblSideHint.Click += OnSideHintClick;
+        }
+
+        private void InitResultContextMenu()
+        {
+            var ctx = new ContextMenuStrip();
+            var revealItem = new ToolStripMenuItem("Reveal in Explorer");
+            revealItem.Click += (sender, e) =>
+            {
+                if (_listResults.SelectedItems.Count > 0 &&
+                    _listResults.SelectedItems[0].Tag is FindInFilesMatch match &&
+                    File.Exists(match.FilePath))
+                {
+                    Process.Start("explorer.exe", "/select, \"" + match.FilePath + "\"");
+                }
+            };
+            ctx.Items.Add(revealItem);
+            _listResults.ContextMenuStrip = ctx;
         }
 
         /// <summary>
         /// Opens/activates the dialog. Owner must be the parent LandbReviewer form.
         /// </summary>
-        public void Open(string findText, string rootDir, char side, IWin32Window owner)
+        public void Open(string findText, string dirA, string dirB, char side, IWin32Window owner)
         {
+            _dirA = dirA;
+            _dirB = dirB;
+
             if (!string.IsNullOrEmpty(findText))
                 _txtFind.Text = findText;
 
-            if (!string.IsNullOrEmpty(rootDir))
-            {
-                _txtDirectory.Text = rootDir;
-                _currentRootDir = rootDir;
-                _lblSideHint.Text = $"Side {side}";
-            }
+            SwitchToSide(side);
 
             if (!Visible)
                 Show(owner);
@@ -56,6 +75,20 @@ namespace TTG_Tools
 
             _txtFind.Focus();
             _txtFind.SelectAll();
+        }
+
+        private void SwitchToSide(char side)
+        {
+            _currentSide = side;
+            _currentRootDir = side == 'A' ? _dirA : _dirB;
+            _txtDirectory.Text = _currentRootDir ?? "";
+            _lblSideHint.Text = $"Side {side} (click to switch)";
+            _lblSideHint.Cursor = Cursors.Hand;
+        }
+
+        private void OnSideHintClick(object sender, EventArgs e)
+        {
+            SwitchToSide(_currentSide == 'A' ? 'B' : 'A');
         }
 
         private void InitWorker()
@@ -329,11 +362,14 @@ namespace TTG_Tools
             _listResults.BeginUpdate();
             _listResults.Items.Clear();
 
-            var entryGroups = matches.GroupBy(m => new { m.RelativePath, m.EntryIndex });
+            var entryGroups = matches.GroupBy(m => new { m.FilePath, m.EntryIndex });
             foreach (var g in entryGroups)
             {
                 var first = g.First();
                 string fields = string.Join(", ", g.Select(m => m.FieldName).Distinct());
+
+                // Prefix with side indicator for disambiguation
+                string displayPath = GetDisplayPath(first.RelativePath);
 
                 string preview;
                 if (replaceMode && !string.IsNullOrEmpty(_txtReplace.Text))
@@ -350,7 +386,7 @@ namespace TTG_Tools
                     preview = Truncate(first.FullValue, 80);
                 }
 
-                var item = new ListViewItem(first.RelativePath);
+                var item = new ListViewItem(displayPath);
                 item.SubItems.Add((first.EntryIndex + 1).ToString());
                 item.SubItems.Add(fields);
                 item.SubItems.Add(preview);
@@ -359,6 +395,14 @@ namespace TTG_Tools
             }
 
             _listResults.EndUpdate();
+        }
+
+        private string GetDisplayPath(string relPath)
+        {
+            // Show Side prefix when both sides have directories set and differ
+            if (!string.IsNullOrEmpty(_dirA) && !string.IsNullOrEmpty(_dirB) && _dirA != _dirB)
+                return $"[{_currentSide}] {relPath}";
+            return relPath;
         }
 
         private static string Truncate(string s, int maxLen)

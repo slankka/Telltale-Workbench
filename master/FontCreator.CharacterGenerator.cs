@@ -11,7 +11,7 @@ using ImageMagick;
 
 namespace TTG_Tools
 {
-    public partial class FontEditor
+    public partial class FontCreator
     {
         // Generate missing characters and append to the end of textures
         private void buttonGenerateMissingChars_Click(object sender, EventArgs e)

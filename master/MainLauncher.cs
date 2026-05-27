@@ -18,13 +18,13 @@ namespace TTG_Tools
             WireCard(_pnlLandbEditor, () => OpenTool<LandbEditor>());
             WireCard(_pnlLandbReviewer, () => OpenTool<LandbReviewer>());
             WireCard(_pnlScanner, () => OpenTool<Ttarch2Scanner>());
-            WireCard(_pnlSettings, () => OpenTool<FontEditor>());
+            WireCard(_pnlFontCreator, () => OpenTool<FontCreator>());
             WireCard(_pnlArchivePacker, () => OpenTool<ArchivePacker>());
             WireCard(_pnlAutoPacker, () => OpenTool<AutoPacker>());
-            WireCard(_pnlQuickTools, () => OpenSettings());
+            WireCard(_pnlSettings, () => OpenSettings());
             WireCard(_pnlAbout, () =>
             {
-                var about = new About();
+                var about = new AboutMain();
                 about.ShowDialog(this);
             });
         }

@@ -38,7 +38,7 @@ namespace TTG_Tools.Graphics
 
             byte[] header = br.ReadBytes(4);
 
-            // Determine read position (consistent with FontEditor.cs lines 1231-1243)
+            // Determine read position (consistent with FontCreator.cs lines 1231-1243)
             int poz;
             if (Encoding.ASCII.GetString(header) == "5VSM" || Encoding.ASCII.GetString(header) == "6VSM")
             {
@@ -49,15 +49,15 @@ namespace TTG_Tools.Graphics
                 poz = 4;
             }
 
-            // Read countElements (consistent with FontEditor.cs lines 1245-1248)
+            // Read countElements (consistent with FontCreator.cs lines 1245-1248)
             br.BaseStream.Seek(poz, SeekOrigin.Begin);
             int countElements = br.ReadInt32();
 
-            // Read tmp marker (consistent with FontEditor.cs lines 1254-1255)
+            // Read tmp marker (consistent with FontCreator.cs lines 1254-1255)
             br.BaseStream.Seek(poz + 4, SeekOrigin.Begin);
             byte[] tmp = br.ReadBytes(8);
 
-            // Detect font type (consistent with FontEditor.cs lines 1267-1276)
+            // Detect font type (consistent with FontCreator.cs lines 1267-1276)
             if (BitConverter.ToString(tmp) == "81-53-37-63-9E-4A-3A-9A")
             {
                 if (countElements == 1 && Encoding.ASCII.GetString(header) == "6VSM")
@@ -70,7 +70,7 @@ namespace TTG_Tools.Graphics
                     fs.Close();
                     br.Close();
                     GC.Collect();
-                    return "This is a bitmap font (.font file). Please use FontEditor to edit it: " + fi.Name;
+                    return "This is a bitmap font (.font file). Please use FontCreator to edit it: " + fi.Name;
                 }
             }
             else
@@ -79,7 +79,7 @@ namespace TTG_Tools.Graphics
                 fs.Close();
                 br.Close();
                 GC.Collect();
-                return "This is a bitmap font (.font file). Please use FontEditor to edit it: " + fi.Name;
+                return "This is a bitmap font (.font file). Please use FontCreator to edit it: " + fi.Name;
             }
 
             // Read version for further verification

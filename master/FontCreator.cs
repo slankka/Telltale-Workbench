@@ -13,19 +13,19 @@ using ImageMagick;
 
 namespace TTG_Tools
 {
-    public partial class FontEditor : Form
+    public partial class FontCreator : Form
     {
         [DllImport("kernel32.dll")]
         public static extern void SetProcessWorkingSetSize(IntPtr hWnd, int i, int j);
 
-        public FontEditor()
+        public FontCreator()
         {
             InitializeComponent();
             SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle, -1, -1);
 
             AllowDrop = true;
-            DragEnter += FontEditor_DragEnter;
-            DragDrop += FontEditor_DragDrop;
+            DragEnter += FontCreator_DragEnter;
+            DragDrop += FontCreator_DragDrop;
             EnableDragDropForControls(this);
         }
 
@@ -66,8 +66,8 @@ namespace TTG_Tools
             foreach (Control control in parent.Controls)
             {
                 control.AllowDrop = true;
-                control.DragEnter += FontEditor_DragEnter;
-                control.DragDrop += FontEditor_DragDrop;
+                control.DragEnter += FontCreator_DragEnter;
+                control.DragDrop += FontCreator_DragDrop;
 
                 if (control.HasChildren)
                 {
@@ -76,7 +76,7 @@ namespace TTG_Tools
             }
         }
 
-        private void FontEditor_DragEnter(object sender, DragEventArgs e)
+        private void FontCreator_DragEnter(object sender, DragEventArgs e)
         {
             if (!e.Data.GetDataPresent(DataFormats.FileDrop))
             {
@@ -89,7 +89,7 @@ namespace TTG_Tools
             e.Effect = hasFontFile ? DragDropEffects.Copy : DragDropEffects.None;
         }
 
-        private void FontEditor_DragDrop(object sender, DragEventArgs e)
+        private void FontCreator_DragDrop(object sender, DragEventArgs e)
         {
             string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
             if (files == null || files.Length == 0)

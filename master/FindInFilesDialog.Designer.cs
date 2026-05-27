@@ -110,9 +110,9 @@ namespace TTG_Tools
             // _lblSideHint
             this._lblSideHint.AutoSize = true;
             this._lblSideHint.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
-            this._lblSideHint.Location = new System.Drawing.Point(308, 43);
+            this._lblSideHint.Location = new System.Drawing.Point(150, 43);
             this._lblSideHint.Name = "_lblSideHint";
-            this._lblSideHint.Size = new System.Drawing.Size(40, 13);
+            this._lblSideHint.Size = new System.Drawing.Size(180, 13);
             this._lblSideHint.TabIndex = 3;
             this._lblSideHint.Text = "Side ?";
 

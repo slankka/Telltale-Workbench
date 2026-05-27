@@ -120,75 +120,19 @@
   <data name="richTextBox1.Text" xml:space="preserve">
     <value>TTG Font Creator
 ========================================
-A specialized tool for Telltale Games font creating and editing,
-with Archive Packer &amp; Unpacker as auxiliary utilities.
+A specialized tool for Telltale Games font creating and editing
 
 Based on TTG Tools by Den Em (Е.Д.В.) and Pashok6798.
 Originally modded by Krisp and HeitorSpectre.
 Fork enhanced by Arvin (github.com/slankka).
 
 Source code:
-GitHub: https://github.com/slankka/TTG-Font-Creator
-
-Special thanks to:
-- Den Em for accepting to upload his source code.
-- Aluigi for source code of ttarchext.
-- Taylor Hornby for C# source code of Blowfish encryption.
-- Gdkchan, Stella/AboodXD for Nintendo Switch swizzle method.
-- Daemon1 and tge for PS4 swizzle algorithm.
-- Josh Tamely for Oodle wrapper.
-- Hajin Jang for Zlib.Wrapper.
-- Nemiroff for fixing bugs in the Font Editor.
-- Krisp for Xbox texture support and font editing with Swizzle.
-- Pashok6798 for his support to the community.
-- BennyBoy for the Poker Night Remastered encryption key.
-
-========================================
-FEATURES
-
-[Font Editor - Core]
-- Load/edit/save .font files (5VSM / 6VSM / ERTM)
-- Multi-page texture support (DDS import/export)
-- Coordinate editor with real-time preview
-- Character generator with system font picker (TTF/OTF)
-- Missing character detection &amp; auto generation
-- Smart gap-filling on texture pages
-- FNT import/export
-- YOffset &amp; YAdjust batch controls
-- Profile system (save/load settings per font)
-- Drag-and-drop .font loading
-- Swizzle support: Nintendo Switch, PS4, PS Vita, Xbox 360, Nintendo Wii
-
-[Font Editor - Switch Compatibility]
-- Full NewFormat font creation pipeline (New -&gt; Import FNT -&gt; Import DDS -&gt; Save)
-- Hardware texture parameter block auto-injection
-- Header fix: offset 0x08 always 0 (structural separator)
-- FontName protection on FNT import
-
-[Archive Packer]
-- Pack folders into ttarch / ttarch2 archives
-- Oodle LZHLW &amp; Kraken compression
-- Encryption key selection (40+ games)
-- Last chunk padding control
-
-[Archive Unpacker]
-- Extract ttarch / ttarch2 archives
-- Auto-detect game encryption keys
-- Search filter &amp; format filter
-- Oodle Kraken decompression support
-- Ttarch2 Scanner: browse archive contents without extraction
+GitHub: https://github.com/slankka/Telltale-Workbench
 
 ========================================
 Supported games:
-Telltale Texas Hold'em, Bone, Sam &amp; Max (all seasons + Remastered),
-Strong Bad, Wallace &amp; Gromit, Tales of Monkey Island, Hector,
-Puzzle Agent 1 &amp; 2, Poker Night 1 &amp; 2 (+ Remastered),
-Back to the Future, CSI (3D, Hard Evidence, Deadly Intent, Fatal Conspiracy),
-Jurassic Park, Law &amp; Order: Legacies,
-The Walking Dead (S1-S4, Michonne, Definitive Series),
-The Wolf Among Us, Tales from the Borderlands,
-Game of Thrones, Minecraft: Story Mode (S1 &amp; S2),
-Batman (S1 &amp; S2), Guardians of the Galaxy.
+
+see About in the main about section.
 
 ========================================
 [Version history]

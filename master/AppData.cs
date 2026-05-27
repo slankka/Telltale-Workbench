@@ -8,7 +8,7 @@ using System.Xml.Serialization;
 namespace TTG_Tools
 {
     /// <summary>
-    /// Application-wide shared data — replaces static members formerly on MainMenu.
+    /// Application-wide shared data.
     /// </summary>
     public static class AppData
     {
@@ -23,7 +23,7 @@ namespace TTG_Tools
 
         /// <summary>
         /// Static constructor — populates encryption-key list.
-        /// Equivalent to the old MainMenu_Load key-initialisation block.
+        /// Populates encryption-key list on first use.
         /// </summary>
         static AppData()
         {

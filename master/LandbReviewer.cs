@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -18,6 +19,8 @@ namespace TTG_Tools
         private bool _isUnicodeA, _isUnicodeB;
         private bool _mapCreditsA, _mapCreditsB;
         private bool _isDirtyA, _isDirtyB;
+        private readonly Timer _resizeRedrawTimer;
+        private bool _isWindowMoving;
 
         // Find/Replace state
         private FindReplaceDialog _findReplaceDlg;
@@ -34,6 +37,11 @@ namespace TTG_Tools
         {
             InitializeComponent();
             ActiveInstance = this;
+            this.DoubleBuffered = true;
+            _resizeRedrawTimer = new Timer { Interval = 120 };
+            _resizeRedrawTimer.Tick += OnResizeRedrawTimerTick;
+            this.ResizeBegin += OnResizeBegin;
+            this.ResizeEnd += OnResizeEnd;
             // Default: trees visible, menu checked
             _hideTreesMenu.Checked = true;
             _panelDirA.Visible = true;
@@ -41,6 +49,10 @@ namespace TTG_Tools
             InitFindReplace();
             HookSyncScroll();
             HookEditingControls();
+            HookEntryJumpControls();
+            UpdateEntryJumpControls();
+            HookRowPaint();
+            InitTreeContextMenus();
             RestoreLastDirectories();
         }
 
@@ -60,6 +72,101 @@ namespace TTG_Tools
         {
             _gridViewA.EditingControlShowing += OnEditingControlShowing;
             _gridViewB.EditingControlShowing += OnEditingControlShowing;
+        }
+
+        private void HookEntryJumpControls()
+        {
+            _btnJumpA.Click += (sender, e) => JumpToEntry('A', _txtEntryA.Text);
+            _btnJumpB.Click += (sender, e) => JumpToEntry('B', _txtEntryB.Text);
+            _txtEntryA.KeyDown += OnEntryJumpKeyDown;
+            _txtEntryB.KeyDown += OnEntryJumpKeyDown;
+        }
+
+        private void OnResizeBegin(object sender, EventArgs e)
+        {
+            _resizeRedrawTimer.Stop();
+            SetGridAutoSizeDuringResize(false);
+        }
+
+        private void OnResizeEnd(object sender, EventArgs e)
+        {
+            _resizeRedrawTimer.Stop();
+            _resizeRedrawTimer.Start();
+        }
+
+        private void OnResizeRedrawTimerTick(object sender, EventArgs e)
+        {
+            _resizeRedrawTimer.Stop();
+            SetGridAutoSizeDuringResize(true);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_ENTERSIZEMOVE = 0x0231;
+            const int WM_EXITSIZEMOVE = 0x0232;
+
+            if (m.Msg == WM_ENTERSIZEMOVE)
+            {
+                _isWindowMoving = true;
+            }
+            else if (m.Msg == WM_EXITSIZEMOVE)
+            {
+                _isWindowMoving = false;
+                _gridViewA.Invalidate();
+                _gridViewB.Invalidate();
+            }
+
+            base.WndProc(ref m);
+        }
+
+        private void SetGridAutoSizeDuringResize(bool enabled)
+        {
+            var mode = enabled ? DataGridViewAutoSizeRowsMode.AllCells : DataGridViewAutoSizeRowsMode.None;
+            _gridViewA.AutoSizeRowsMode = mode;
+            _gridViewB.AutoSizeRowsMode = mode;
+
+            if (enabled)
+            {
+                try { _gridViewA.AutoResizeRows(); } catch { }
+                try { _gridViewB.AutoResizeRows(); } catch { }
+            }
+        }
+
+        private void UpdateEntryJumpControls()
+        {
+            bool syncScrollEnabled = _syncScrollMenu.Checked;
+            _txtEntryB.Enabled = !syncScrollEnabled;
+            _btnJumpB.Enabled = !syncScrollEnabled;
+        }
+
+        private void OnEntryJumpKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode != Keys.Enter) return;
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+
+            if (sender == _txtEntryA)
+                JumpToEntry('A', _txtEntryA.Text);
+            else if (sender == _txtEntryB)
+                JumpToEntry('B', _txtEntryB.Text);
+        }
+
+        private void JumpToEntry(char side, string entryText)
+        {
+            if (!int.TryParse(entryText, out int entryNumber) || entryNumber < 1)
+            {
+                Log($"ERROR ({side}): entry must be a positive number.");
+                return;
+            }
+
+            string filePath = side == 'A' ? _filePathA : _filePathB;
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            {
+                Log($"ERROR ({side}): no .landb file loaded.");
+                return;
+            }
+
+            NavigateToFileAndEntry(filePath, entryNumber - 1, "langid");
         }
 
         private void OnEditingControlShowing(object sender, DataGridViewEditingControlShowingEventArgs e)
@@ -82,6 +189,106 @@ namespace TTG_Tools
                 if (cellValue.Contains("\n"))
                     tb.Text = cellValue;
             }
+
+            // Attach "Copy Tags from Other Side" context menu
+            AttachTagCopyMenu(tb, grid);
+        }
+
+        private void AttachTagCopyMenu(TextBox tb, DataGridView grid)
+        {
+            if (tb.ContextMenuStrip != null) return; // already attached
+
+            var ctx = new ContextMenuStrip();
+            var copyTagsItem = new ToolStripMenuItem("Copy Tags from Other Side");
+            copyTagsItem.Click += (sender, e) =>
+            {
+                if (grid?.CurrentCell == null) return;
+                int row = grid.CurrentCell.RowIndex;
+                var otherGrid = grid == _gridViewA ? _gridViewB : _gridViewA;
+                if (otherGrid.RowCount <= row) return;
+
+                string otherText = otherGrid.Rows[row].Cells[1].Value?.ToString() ?? "";
+                // Extract {tags} and [tags]
+                var tags = System.Text.RegularExpressions.Regex.Matches(otherText, @"\{[^}]+\}|\[[^\]]+\]");
+                if (tags.Count == 0) return;
+
+                string insert = string.Join(" ", tags.Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value));
+                int selStart = tb.SelectionStart;
+                tb.Text = tb.Text.Insert(selStart, insert);
+                tb.SelectionStart = selStart + insert.Length;
+                tb.Focus();
+            };
+            ctx.Items.Add(copyTagsItem);
+            tb.ContextMenuStrip = ctx;
+        }
+
+        private void InitTreeContextMenus()
+        {
+            // Side A tree
+            var ctxA = new ContextMenuStrip();
+            var revealA = new ToolStripMenuItem("Reveal in Explorer");
+            revealA.Click += (sender, e) =>
+            {
+                if (_treeViewA.SelectedNode?.Tag is string path && File.Exists(path))
+                    Process.Start("explorer.exe", "/select, \"" + path + "\"");
+            };
+            ctxA.Items.Add(revealA);
+            _treeViewA.ContextMenuStrip = ctxA;
+            _treeViewA.NodeMouseClick += (sender, e) =>
+            {
+                if (e.Button == MouseButtons.Right)
+                    _treeViewA.SelectedNode = e.Node;
+            };
+
+            // Side B tree
+            var ctxB = new ContextMenuStrip();
+            var revealB = new ToolStripMenuItem("Reveal in Explorer");
+            revealB.Click += (sender, e) =>
+            {
+                if (_treeViewB.SelectedNode?.Tag is string path && File.Exists(path))
+                    Process.Start("explorer.exe", "/select, \"" + path + "\"");
+            };
+            ctxB.Items.Add(revealB);
+            _treeViewB.ContextMenuStrip = ctxB;
+            _treeViewB.NodeMouseClick += (sender, e) =>
+            {
+                if (e.Button == MouseButtons.Right)
+                    _treeViewB.SelectedNode = e.Node;
+            };
+        }
+
+        // Cached for RowPostPaint performance (avoids per-paint allocations)
+        private static readonly Font _rowPaintFont = new Font("Tahoma", 8.25F, FontStyle.Regular);
+        private static readonly StringFormat _rowPaintFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+
+        private void HookRowPaint()
+        {
+            _gridViewA.TopLeftHeaderCell.Value = "#";
+            _gridViewB.TopLeftHeaderCell.Value = "#";
+            _gridViewA.RowPostPaint += OnRowPostPaint;
+            _gridViewB.RowPostPaint += OnRowPostPaint;
+
+            // Enable double-buffering to reduce flicker during scroll
+            typeof(DataGridView).InvokeMember("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.SetProperty,
+                null, _gridViewA, new object[] { true });
+            typeof(DataGridView).InvokeMember("DoubleBuffered",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.SetProperty,
+                null, _gridViewB, new object[] { true });
+        }
+
+        private void OnRowPostPaint(object sender, DataGridViewRowPostPaintEventArgs e)
+        {
+            if (_isWindowMoving) return;
+            if (e.RowIndex < 0) return;
+            if (e.RowIndex % ROWS_PER_ENTRY != 0) return;
+
+            int entryNum = (e.RowIndex / ROWS_PER_ENTRY) + 1;
+            string text = entryNum.ToString();
+            var grid = sender as DataGridView;
+            var rect = new Rectangle(e.RowBounds.Left + 2, e.RowBounds.Top + 2,
+                grid.RowHeadersWidth - 4, e.RowBounds.Height - 4);
+            e.Graphics.DrawString(text, _rowPaintFont, Brushes.DimGray, rect, _rowPaintFormat);
         }
 
         private void RestoreLastDirectories()
@@ -467,10 +674,11 @@ namespace TTG_Tools
         private void OpenFindInFiles()
         {
             char side = ActiveSide;
-            string dir = GetCurrentDirectory(side);
+            string dirA = GetCurrentDirectory('A');
+            string dirB = GetCurrentDirectory('B');
             string selectedText = GetSelectedText(side);
 
-            _findInFilesDlg.Open(selectedText, dir, side, this);
+            _findInFilesDlg.Open(selectedText, dirA, dirB, side, this);
 
             // Always position centered on parent
             _findInFilesDlg.StartPosition = FormStartPosition.Manual;
@@ -499,6 +707,15 @@ namespace TTG_Tools
             string currentPath = side == 'A' ? _filePathA : _filePathB;
             return !string.IsNullOrEmpty(currentPath) &&
                    string.Equals(currentPath, filePath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Enter compare mode: hide directory trees, disable the View→File Directory toggle.
+        /// </summary>
+        internal void EnterCompareMode()
+        {
+            _hideTreesMenu.Checked = false;
+            _hideTreesMenu.Enabled = false;
         }
 
         /// <summary>
@@ -653,6 +870,13 @@ namespace TTG_Tools
                     _isUnicodeA = isUnicode; _mapCreditsA = mapCredits; _isDirtyA = false;
                     PopulateGrid(_gridViewA, texts);
                     _lblFileInfoA.Text = $"{Path.GetFileName(filePath)} ({texts.Count} entries)" + (isUnicode ? " [U]" : "");
+                    if (landb.hasIncorrectSizes)
+                    {
+                        _lblFileInfoA.Text += " ⚠ SIZE MISMATCH — Save to fix";
+                        _lblFileInfoA.ForeColor = Color.OrangeRed;
+                        Log($"WARNING ({side}): {Path.GetFileName(filePath)} has incorrect landbFileSize/blockLength. Save to correct.");
+                    }
+                    else { _lblFileInfoA.ForeColor = SystemColors.ControlText; }
                     _btnSaveA.Enabled = _btnSaveAsA.Enabled = true;
                 }
                 else
@@ -661,9 +885,17 @@ namespace TTG_Tools
                     _isUnicodeB = isUnicode; _mapCreditsB = mapCredits; _isDirtyB = false;
                     PopulateGrid(_gridViewB, texts);
                     _lblFileInfoB.Text = $"{Path.GetFileName(filePath)} ({texts.Count} entries)" + (isUnicode ? " [U]" : "");
+                    if (landb.hasIncorrectSizes)
+                    {
+                        _lblFileInfoB.Text += " ⚠ SIZE MISMATCH — Save to fix";
+                        _lblFileInfoB.ForeColor = Color.OrangeRed;
+                        Log($"WARNING ({side}): {Path.GetFileName(filePath)} has incorrect landbFileSize/blockLength. Save to correct.");
+                    }
+                    else { _lblFileInfoB.ForeColor = SystemColors.ControlText; }
                     _btnSaveB.Enabled = _btnSaveAsB.Enabled = true;
                 }
                 Log($"Loaded ({side}): {Path.GetFileName(filePath)} - {texts.Count} entries");
+                if (_highlightDiffsMenu.Checked) ApplyDiffHighlighting();
             }
             catch (Exception ex) { Log($"ERROR loading ({side}): {ex.Message}"); }
         }
@@ -672,8 +904,9 @@ namespace TTG_Tools
 
         private static void PopulateGrid(DataGridView grid, List<CommonText> texts)
         {
+            grid.SuspendLayout();
             grid.Rows.Clear();
-            if (texts == null) return;
+            if (texts == null) { grid.ResumeLayout(); return; }
             foreach (var t in texts)
             {
                 // DataGridView GDI+ renderer requires \r\n for line breaks.
@@ -699,8 +932,10 @@ namespace TTG_Tools
                     row.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
                 }
             }
-            // Force auto-size so multi-line rows get correct height
+            grid.ResumeLayout();
+            // Force auto-size once, then disable to prevent scroll-time recalculations
             grid.AutoResizeRows();
+            grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
         }
 
         // ========== Editing ==========
@@ -726,6 +961,8 @@ namespace TTG_Tools
 
         private void OnSyncScrollToggled(object sender, EventArgs e)
         {
+            UpdateEntryJumpControls();
+
             if (_syncScrollMenu.Checked)
             {
                 _gridViewA.Scroll += OnGridAScroll;
@@ -772,13 +1009,79 @@ namespace TTG_Tools
             }
         }
 
+        private void OnHighlightDiffsToggled(object sender, EventArgs e)
+        {
+            if (_highlightDiffsMenu.Checked)
+                ApplyDiffHighlighting();
+            else
+                ClearDiffHighlighting();
+        }
+
+        private void ApplyDiffHighlighting()
+        {
+            ClearDiffHighlighting(); // reset previous highlights first
+            if (_textsA == null || _textsB == null) return;
+            int count = Math.Min(_textsA.Count, _textsB.Count);
+
+            for (int i = 0; i < count; i++)
+            {
+                var ta = _textsA[i];
+                var tb = _textsB[i];
+                int baseRow = i * ROWS_PER_ENTRY;
+
+                // Compare all 5 fields per entry
+                HighlightRowDiff(_gridViewA, _gridViewB, baseRow, 0, ta.strNumber.ToString(), tb.strNumber.ToString());
+                HighlightRowDiff(_gridViewA, _gridViewB, baseRow, 1, ta.actorName ?? "", tb.actorName ?? "");
+                HighlightRowDiff(_gridViewA, _gridViewB, baseRow, 2, ta.actorSpeechOriginal ?? "", tb.actorSpeechOriginal ?? "");
+                HighlightRowDiff(_gridViewA, _gridViewB, baseRow, 3, ta.actorSpeechTranslation ?? "", tb.actorSpeechTranslation ?? "");
+                HighlightRowDiff(_gridViewA, _gridViewB, baseRow, 4, ta.flags ?? "", tb.flags ?? "");
+            }
+
+            // Highlight file name labels if they differ
+            string nameA = Path.GetFileName(_filePathA ?? "");
+            string nameB = Path.GetFileName(_filePathB ?? "");
+            if (!string.IsNullOrEmpty(nameA) && !string.IsNullOrEmpty(nameB) && nameA != nameB)
+            {
+                var diffColor = Color.FromArgb(255, 230, 230);
+                _lblFileInfoA.BackColor = diffColor;
+                _lblFileInfoB.BackColor = diffColor;
+            }
+        }
+
+        private static void HighlightRowDiff(DataGridView gridA, DataGridView gridB, int baseRow, int fieldOffset,
+            string valA, string valB)
+        {
+            int row = baseRow + fieldOffset;
+            if (row >= gridA.RowCount || row >= gridB.RowCount) return;
+
+            if (valA != valB)
+            {
+                var diffColor = Color.FromArgb(255, 230, 230); // light red
+                gridA.Rows[row].Cells[1].Style.BackColor = diffColor;
+                gridB.Rows[row].Cells[1].Style.BackColor = diffColor;
+            }
+        }
+
+        private void ClearDiffHighlighting()
+        {
+            foreach (DataGridView grid in new[] { _gridViewA, _gridViewB })
+            {
+                foreach (DataGridViewRow row in grid.Rows)
+                {
+                    if (row.Cells.Count > 1)
+                        row.Cells[1].Style.BackColor = Color.Empty;
+                }
+            }
+            _lblFileInfoA.BackColor = Color.Empty;
+            _lblFileInfoB.BackColor = Color.Empty;
+        }
+
         private void OnGridAScroll(object sender, ScrollEventArgs e)
         {
             if (_suppressScrollSync || !_syncScrollMenu.Checked || _gridViewB.RowCount == 0) return;
-            int entry = _gridViewA.FirstDisplayedScrollingRowIndex / ROWS_PER_ENTRY;
-            if (entry == _lastEntryA) return;
-            _lastEntryA = entry;
-            int target = entry * ROWS_PER_ENTRY;
+            int target = _gridViewA.FirstDisplayedScrollingRowIndex;
+            if (target == _lastEntryA) return;
+            _lastEntryA = target;
             if (target >= _gridViewB.RowCount) return;
             _suppressScrollSync = true;
             try { _gridViewB.FirstDisplayedScrollingRowIndex = target; } catch { }
@@ -788,10 +1091,9 @@ namespace TTG_Tools
         private void OnGridBScroll(object sender, ScrollEventArgs e)
         {
             if (_suppressScrollSync || !_syncScrollMenu.Checked || _gridViewA.RowCount == 0) return;
-            int entry = _gridViewB.FirstDisplayedScrollingRowIndex / ROWS_PER_ENTRY;
-            if (entry == _lastEntryB) return;
-            _lastEntryB = entry;
-            int target = entry * ROWS_PER_ENTRY;
+            int target = _gridViewB.FirstDisplayedScrollingRowIndex;
+            if (target == _lastEntryB) return;
+            _lastEntryB = target;
             if (target >= _gridViewA.RowCount) return;
             _suppressScrollSync = true;
             try { _gridViewA.FirstDisplayedScrollingRowIndex = target; } catch { }
@@ -803,15 +1105,12 @@ namespace TTG_Tools
             if (_suppressSelectionSync || !_syncScrollMenu.Checked) return;
             if (_gridViewA.SelectedRows.Count == 0) return;
             int idx = _gridViewA.SelectedRows[0].Index;
-            int entryStart = (idx / ROWS_PER_ENTRY) * ROWS_PER_ENTRY;
-            if (entryStart < _gridViewB.RowCount)
+            if (idx < _gridViewB.RowCount)
             {
                 _suppressSelectionSync = true;
                 try
                 {
-                    _gridViewB.ClearSelection();
-                    for (int r = 0; r < ROWS_PER_ENTRY && entryStart + r < _gridViewB.RowCount; r++)
-                        _gridViewB.Rows[entryStart + r].Selected = true;
+                    SelectCell(_gridViewB, idx);
                 }
                 finally { _suppressSelectionSync = false; }
             }
@@ -822,15 +1121,12 @@ namespace TTG_Tools
             if (_suppressSelectionSync || !_syncScrollMenu.Checked) return;
             if (_gridViewB.SelectedRows.Count == 0) return;
             int idx = _gridViewB.SelectedRows[0].Index;
-            int entryStart = (idx / ROWS_PER_ENTRY) * ROWS_PER_ENTRY;
-            if (entryStart < _gridViewA.RowCount)
+            if (idx < _gridViewA.RowCount)
             {
                 _suppressSelectionSync = true;
                 try
                 {
-                    _gridViewA.ClearSelection();
-                    for (int r = 0; r < ROWS_PER_ENTRY && entryStart + r < _gridViewA.RowCount; r++)
-                        _gridViewA.Rows[entryStart + r].Selected = true;
+                    SelectCell(_gridViewA, idx);
                 }
                 finally { _suppressSelectionSync = false; }
             }
@@ -842,12 +1138,12 @@ namespace TTG_Tools
         {
             if (side == 'A')
             {
-                if (!_isDirtyA) { Log("Side A: no changes."); return; }
+                if (string.IsNullOrEmpty(_filePathA)) { Log("Side A: no file loaded."); return; }
                 DoSave(_filePathA, _filePathA, _landbA, _gridViewA, ref _textsA, ref _isDirtyA, _mapCreditsA, 'A');
             }
             else
             {
-                if (!_isDirtyB) { Log("Side B: no changes."); return; }
+                if (string.IsNullOrEmpty(_filePathB)) { Log("Side B: no file loaded."); return; }
                 DoSave(_filePathB, _filePathB, _landbB, _gridViewB, ref _textsB, ref _isDirtyB, _mapCreditsB, 'B');
             }
         }
@@ -876,10 +1172,34 @@ namespace TTG_Tools
                 {
                     isDirty = false;
                     if (outPath != origPath) { if (side == 'A') _filePathA = outPath; else _filePathB = outPath; }
+                    // Refresh grid from saved landb data (speechOriginal may have changed)
+                    RefreshSide(side);
                     UpdateTitle();
                 }
             }
             catch (Exception ex) { Log($"ERROR saving ({side}): {ex.Message}"); }
+        }
+
+        private void RefreshSide(char side)
+        {
+            if (side == 'A' && _landbA != null && _textsA != null)
+            {
+                _textsA = LandbWorker.LandbToCommonTextList(_landbA, _mapCreditsA);
+                PopulateGrid(_gridViewA, _textsA);
+                Log($"Side A refreshed.");
+            }
+            else if (side == 'B' && _landbB != null && _textsB != null)
+            {
+                _textsB = LandbWorker.LandbToCommonTextList(_landbB, _mapCreditsB);
+                PopulateGrid(_gridViewB, _textsB);
+                Log($"Side B refreshed.");
+            }
+        }
+
+        private void OnRefreshMenu(object sender, EventArgs e)
+        {
+            char side = ActiveSide;
+            RefreshSide(side);
         }
 
         private static List<CommonText> ReadTextsFromGrid(DataGridView grid, List<CommonText> existing)
@@ -906,12 +1226,27 @@ namespace TTG_Tools
 
         private void ExportAllChars(char side)
         {
-            var texts = side == 'A' ? _textsA : _textsB;
-            if (texts == null || texts.Count == 0)
+            var tree = side == 'A' ? _treeViewA : _treeViewB;
+
+            // Collect .landb files from the directory tree
+            var filePaths = new List<string>();
+            if (tree.Nodes.Count > 0 && tree.Nodes[0].Tag is string rootDir &&
+                Directory.Exists(rootDir))
             {
-                Log($"Side {side}: no data loaded.");
-                return;
+                filePaths.AddRange(Directory.GetFiles(rootDir, "*.landb", SearchOption.AllDirectories));
             }
+            else
+            {
+                var texts = side == 'A' ? _textsA : _textsB;
+                if (texts != null && texts.Count > 0)
+                {
+                    // Fallback: use currently loaded file
+                    string fp = side == 'A' ? _filePathA : _filePathB;
+                    if (!string.IsNullOrEmpty(fp)) filePaths.Add(fp);
+                }
+            }
+
+            if (filePaths.Count == 0) { Log($"Side {side}: no .landb files found."); return; }
 
             using (var dlg = new SaveFileDialog
             {
@@ -925,11 +1260,24 @@ namespace TTG_Tools
                 try
                 {
                     var charSet = new HashSet<string>();
-                    foreach (var t in texts)
+                    int totalEntries = 0;
+                    foreach (var filePath in filePaths)
                     {
-                        if (string.IsNullOrEmpty(t.actorSpeechOriginal)) continue;
-                        foreach (char c in t.actorSpeechOriginal)
-                            charSet.Add(c.ToString());
+                        try
+                        {
+                            bool isUnicode, mapCredits; string errorMsg;
+                            var landb = LandbWorker.LoadLandbFromFile(filePath, out isUnicode, out mapCredits, out errorMsg);
+                            if (landb == null) continue;
+                            for (int i = 0; i < landb.landbCount; i++)
+                            {
+                                string speech = landb.landbs[i].actorSpeech;
+                                if (string.IsNullOrEmpty(speech)) continue;
+                                foreach (char c in speech)
+                                    charSet.Add(c.ToString());
+                            }
+                            totalEntries += landb.landbCount;
+                        }
+                        catch { /* skip unreadable files */ }
                     }
 
                     // Sort: common chars first, then by codepoint
@@ -944,7 +1292,7 @@ namespace TTG_Tools
                             sw.Write(ch);
                     }
 
-                    Log($"Side {side}: exported {charSet.Count} unique chars → {Path.GetFileName(dlg.FileName)}");
+                    Log($"Side {side}: exported {charSet.Count} unique chars from {filePaths.Count} files ({totalEntries} entries) → {Path.GetFileName(dlg.FileName)}");
                 }
                 catch (Exception ex)
                 {

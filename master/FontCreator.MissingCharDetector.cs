@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace TTG_Tools
 {
-    public partial class FontEditor
+    public partial class FontCreator
     {
         private void buttonDetectMissingTextures_Click(object sender, EventArgs e)
         {

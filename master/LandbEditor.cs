@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -126,8 +127,12 @@ namespace TTG_Tools
             openItem.Click += OnTreeOpenClicked;
             var compareItem = new ToolStripMenuItem("Compare (Open in Review Editor)");
             compareItem.Click += OnTreeCompareClicked;
+            var revealItem = new ToolStripMenuItem("Reveal in Explorer");
+            revealItem.Click += OnTreeRevealClicked;
             _treeContextMenu.Items.Add(openItem);
             _treeContextMenu.Items.Add(compareItem);
+            _treeContextMenu.Items.Add(new ToolStripSeparator());
+            _treeContextMenu.Items.Add(revealItem);
         }
 
         private void SelectTreeNode(TreeNode node, bool add)
@@ -198,12 +203,24 @@ namespace TTG_Tools
             if (editor == null)
             {
                 editor = new LandbReviewer();
+                editor.EnterCompareMode();
                 editor.Show();
                 Application.DoEvents();
+            }
+            else
+            {
+                editor.EnterCompareMode();
             }
             editor.LoadFileToSide('A', pathA);
             editor.LoadFileToSide('B', pathB);
             Log($"Opened Compare: {Path.GetFileName(pathA)} ↔ {Path.GetFileName(pathB)}");
+        }
+
+        private void OnTreeRevealClicked(object sender, EventArgs e)
+        {
+            var landbNodes = _selectedNodes.Where(n => n.Tag is string s && File.Exists(s)).ToList();
+            if (landbNodes.Count >= 1)
+                Process.Start("explorer.exe", "/select, \"" + landbNodes[0].Tag.ToString() + "\"");
         }
 
         // ========== Menu / toolbar events ==========
@@ -616,6 +633,16 @@ namespace TTG_Tools
 
                 PopulateGrid(texts);
                 _lblFileInfo.Text = $"{Path.GetFileName(filePath)} ({texts.Count} entries)" + (isUnicode ? " [U]" : "");
+                if (landb.hasIncorrectSizes)
+                {
+                    _lblFileInfo.Text += " ⚠ SIZE MISMATCH — Save to fix";
+                    _lblFileInfo.ForeColor = Color.OrangeRed;
+                    Log($"WARNING: {Path.GetFileName(filePath)} has incorrect landbFileSize/blockLength. Save to correct.");
+                }
+                else
+                {
+                    _lblFileInfo.ForeColor = SystemColors.ControlText;
+                }
                 _btnSave.Enabled = _btnSaveAs.Enabled = true;
                 HidePreview();
                 ClearNormalizeStats();
@@ -657,7 +684,7 @@ namespace TTG_Tools
 
         private void Save()
         {
-            if (!_isDirty) { Log("No changes to save."); return; }
+            if (string.IsNullOrEmpty(_filePath)) { Log("No file loaded."); return; }
             DoSave(_filePath, _filePath);
         }
 
@@ -717,7 +744,20 @@ namespace TTG_Tools
 
         private void ExportAllChars()
         {
-            if (_texts == null || _texts.Count == 0) { Log("No data loaded."); return; }
+            // Collect .landb files from the directory tree
+            var filePaths = new List<string>();
+            if (_treeView.Nodes.Count > 0 && _treeView.Nodes[0].Tag is string rootDir &&
+                Directory.Exists(rootDir))
+            {
+                filePaths.AddRange(Directory.GetFiles(rootDir, "*.landb", SearchOption.AllDirectories));
+            }
+            else if (_texts != null && _texts.Count > 0)
+            {
+                // Fallback: use currently loaded file
+                filePaths.Add(_filePath);
+            }
+
+            if (filePaths.Count == 0) { Log("No .landb files found."); return; }
 
             using (var dlg = new SaveFileDialog
             {
@@ -730,11 +770,25 @@ namespace TTG_Tools
                 try
                 {
                     var charSet = new HashSet<string>();
-                    foreach (var t in _texts)
+                    int totalEntries = 0;
+                    foreach (var filePath in filePaths)
                     {
-                        if (string.IsNullOrEmpty(t.actorSpeechOriginal)) continue;
-                        foreach (char c in t.actorSpeechOriginal)
-                            charSet.Add(c.ToString());
+                        try
+                        {
+                            bool isUnicode, mapCredits; string errorMsg;
+                            var landb = LandbWorker.LoadLandbFromFile(filePath, out isUnicode, out mapCredits, out errorMsg);
+                            if (landb == null) continue;
+                            // Read speechOriginal directly from landb entries (avoid double-copyright-map)
+                            for (int i = 0; i < landb.landbCount; i++)
+                            {
+                                string speech = landb.landbs[i].actorSpeech;
+                                if (string.IsNullOrEmpty(speech)) continue;
+                                foreach (char c in speech)
+                                    charSet.Add(c.ToString());
+                            }
+                            totalEntries += landb.landbCount;
+                        }
+                        catch { /* skip unreadable files */ }
                     }
                     var sorted = charSet
                         .OrderBy(s => s.Length > 0 && char.IsLetterOrDigit(s[0]) ? 0 : 1)
@@ -744,7 +798,7 @@ namespace TTG_Tools
                     {
                         foreach (var ch in sorted) sw.Write(ch);
                     }
-                    Log($"Exported {charSet.Count} unique chars → {Path.GetFileName(dlg.FileName)}");
+                    Log($"Exported {charSet.Count} unique chars from {filePaths.Count} files ({totalEntries} entries) → {Path.GetFileName(dlg.FileName)}");
                 }
                 catch (Exception ex) { Log($"ERROR exporting chars: {ex.Message}"); }
             }

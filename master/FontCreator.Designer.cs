@@ -1,6 +1,6 @@
 namespace TTG_Tools
 {
-    partial class FontEditor
+    partial class FontCreator
     {
         /// <summary>
         /// Required designer variable.
@@ -31,7 +31,7 @@ namespace TTG_Tools
             this.components = new System.ComponentModel.Container();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle1 = new System.Windows.Forms.DataGridViewCellStyle();
             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle2 = new System.Windows.Forms.DataGridViewCellStyle();
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FontEditor));
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FontCreator));
             this.menuStrip1 = new System.Windows.Forms.MenuStrip();
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.newFontToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -1227,7 +1227,7 @@ namespace TTG_Tools
             this.buttonSaveLogAs.UseVisualStyleBackColor = true;
             this.buttonSaveLogAs.Click += new System.EventHandler(this.buttonSaveLogAs_Click);
             // 
-            // FontEditor
+            // FontCreator
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
@@ -1252,11 +1252,11 @@ namespace TTG_Tools
             this.MainMenuStrip = this.menuStrip1;
             this.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.MaximizeBox = false;
-            this.Name = "FontEditor";
+            this.Name = "FontCreator";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "TTG Font Creator";
-            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.FontEditor_FormClosing);
-            this.Load += new System.EventHandler(this.FontEditor_Load);
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.FontCreator_FormClosing);
+            this.Load += new System.EventHandler(this.FontCreator_Load);
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridViewWithTextures)).EndInit();

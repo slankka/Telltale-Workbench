@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26403.7
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TTG Tools", "TTG Tools.csproj", "{91A4EBF7-4A84-4501-8C14-6215B75B3239}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Telltale Workbench", "Telltale Workbench.csproj", "{91A4EBF7-4A84-4501-8C14-6215B75B3239}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

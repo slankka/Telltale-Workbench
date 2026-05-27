@@ -7,7 +7,7 @@ namespace TTG_Tools
 {
     public partial class QuickToolsDialog : Form
     {
-        private readonly FontEditor _owner;
+        private readonly FontCreator _owner;
 
         // Controls for Copy coordinates (groupBox1)
         private GroupBox groupBox1;
@@ -30,7 +30,7 @@ namespace TTG_Tools
         private RadioButton radioButtonXend;
         private Label label5;
 
-        public QuickToolsDialog(FontEditor owner)
+        public QuickToolsDialog(FontCreator owner)
         {
             _owner = owner;
             InitializeComponent();

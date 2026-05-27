@@ -7,7 +7,7 @@ using TTG_Tools.ClassesStructs;
 
 namespace TTG_Tools
 {
-    public partial class FontEditor
+    public partial class FontCreator
     {
         private static string GetFntAttributeValue(string line, string attribute)
         {

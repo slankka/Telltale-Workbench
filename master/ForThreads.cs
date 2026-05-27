@@ -57,7 +57,7 @@ namespace TTG_Tools
 
             bool emptyFiles = true;
 
-            // Salvar o caminho original configurado no MainMenu para restaurar depois
+            // Save original output path to restore later
             string originalGlobalOutputPath = AppData.settings.pathForOutputFolder;
 
             // Lista para armazenar arquivos que falharam

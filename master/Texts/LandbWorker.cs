@@ -35,8 +35,7 @@ namespace TTG_Tools.Texts
                     landb.landbLastFileSize = br.ReadInt32();
                     br.BaseStream.Seek(pos, SeekOrigin.Begin);
                 }
-
-                landb.blockSize1 = br.ReadInt32();
+                long posBlockSize1 = br.BaseStream.Position;                landb.blockSize1 = br.ReadInt32();
                 landb.newLandbFileSize += 4;
                 landb.someValue1 = br.ReadInt32();
                 landb.newLandbFileSize += 4;
@@ -45,6 +44,7 @@ namespace TTG_Tools.Texts
                 landb.someValue2 = br.ReadInt32();
                 landb.newLandbFileSize += 4;
 
+                long posBlockLength = br.BaseStream.Position;
                 landb.blockLength = br.ReadInt32();
                 landb.newLandbFileSize += 4;
                 landb.landbCount = br.ReadInt32();
@@ -226,6 +226,7 @@ namespace TTG_Tools.Texts
                     tmp = null;
                 }
 
+                long posAfterEntries = br.BaseStream.Position;
                 landb.commonSomeDataLen = br.ReadInt32();
                 landb.someData = br.ReadBytes(landb.commonSomeDataLen - 4);
                 landb.newLandbFileSize += landb.commonSomeDataLen;
@@ -236,6 +237,13 @@ namespace TTG_Tools.Texts
                 landb.lastLandbData.Unknown3 = br.ReadInt32();
                 landb.lastLandbData.Unknown4 = br.ReadInt32();
                 landb.newLandbFileSize += 16;
+
+                // Verify landbFileSize and blockLength against actual stream positions
+                long posAfterLastLandb = br.BaseStream.Position;
+                int expectedLandbFileSize = (int)(posAfterLastLandb - posBlockSize1);
+                int expectedBlockLength = (int)(posAfterEntries - posBlockLength);
+                if (landb.landbFileSize != expectedLandbFileSize || landb.blockLength != expectedBlockLength)
+                    landb.hasIncorrectSizes = true;
 
                 if (landb.isNewFormat) landb.lastNewBlockData = br.ReadBytes(landb.landbLastFileSize);
             }
@@ -293,7 +301,13 @@ namespace TTG_Tools.Texts
 
                 var pos = bw.BaseStream.Position;
 
-                bw.Write(landb.newBlockLength);
+                // Use local accumulators to avoid mutating landb.newBlockLength / landb.newLandbFileSize.
+                // RebuildLandb may be called multiple times on the same LandbClass instance,
+                // and the parsed sizes must not inflate across saves.
+                int actualBlockLength = landb.newBlockLength;
+                int actualLandbFileSize = landb.newLandbFileSize;
+
+                bw.Write(actualBlockLength);
                 bw.Write(landb.landbCount);
 
                 for(int i = 0; i < landb.landbCount; i++)
@@ -375,8 +389,8 @@ namespace TTG_Tools.Texts
                     }
                     landb.landbs[i].actorNameSize = tmpActorName.Length;
                     landb.landbs[i].blockActorNameSize = landb.landbs[i].actorNameSize + 8;
-                    landb.newBlockLength += 4 + landb.landbs[i].actorNameSize;
-                    landb.newLandbFileSize += 4 + landb.landbs[i].actorNameSize;
+                    actualBlockLength += 4 + landb.landbs[i].actorNameSize;
+                    actualLandbFileSize += 4 + landb.landbs[i].actorNameSize;
 
                     byte[] tmpActorSpeech = Methods.EncodeGameText(landb.landbs[i].actorSpeech, landb.isUnicode);
                     if (AppData.settings.supportTwdNintendoSwitch && landb.isUnicode)
@@ -415,8 +429,8 @@ namespace TTG_Tools.Texts
                     }
                     landb.landbs[i].actorSpeechSize = tmpActorSpeech.Length;
                     landb.landbs[i].blockActorSpeechSize = landb.landbs[i].actorSpeechSize + 8;
-                    landb.newBlockLength += 4 + landb.landbs[i].actorSpeechSize;
-                    landb.newLandbFileSize += 4 + landb.landbs[i].actorSpeechSize;
+                    actualBlockLength += 4 + landb.landbs[i].actorSpeechSize;
+                    actualLandbFileSize += 4 + landb.landbs[i].actorSpeechSize;
 
                     landb.landbs[i].blockLangresSize = 4 + landb.landbs[i].blockActorNameSize + landb.landbs[i].blockActorSpeechSize + landb.landbs[i].blockSize;
 
@@ -453,11 +467,11 @@ namespace TTG_Tools.Texts
                 if (landb.isNewFormat)
                 {
                     bw.BaseStream.Seek(4, SeekOrigin.Begin);
-                    bw.Write(landb.newLandbFileSize);
+                    bw.Write(actualLandbFileSize);
                 }
 
                 bw.BaseStream.Seek(pos, SeekOrigin.Begin);
-                bw.Write(landb.newBlockLength);
+                bw.Write(actualBlockLength);
 
                 bw.Close();
                 fs.Close();
@@ -825,6 +839,8 @@ namespace TTG_Tools.Texts
                     }
                 }
 
+                bool sizeWasIncorrect = landb.hasIncorrectSizes;
+
                 // 确定匹配类型
                 int type = CheckNumbers(texts, landb);
                 if (type == -1) return "I don't know which type of number strings select for " + fi.Name + " file.";
@@ -845,7 +861,13 @@ namespace TTG_Tools.Texts
                 if (rebuildResult == -1)
                     return "Unknown error while rebuild file " + fi.Name;
 
-                return "File " + fi.Name + " successfully saved.";
+                string result = "File " + fi.Name + " successfully saved.";
+                if (sizeWasIncorrect)
+                {
+                    landb.hasIncorrectSizes = false;
+                    result += " [FIXED: landbFileSize/blockLength were incorrect and have been corrected.]";
+                }
+                return result;
             }
             catch (Exception ex)
             {

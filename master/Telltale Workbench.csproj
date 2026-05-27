@@ -9,7 +9,7 @@
     <OutputType>WinExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>TTG_Tools</RootNamespace>
-    <AssemblyName>TTG-Text-Mate</AssemblyName>
+    <AssemblyName>Telltale-Workbench</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ApplicationIcon>ttgtool.ico</ApplicationIcon>
@@ -100,6 +100,12 @@
     <Compile Include="About.Designer.cs">
       <DependentUpon>About.cs</DependentUpon>
     </Compile>
+    <Compile Include="AboutMain.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AboutMain.Designer.cs">
+      <DependentUpon>AboutMain.cs</DependentUpon>
+    </Compile>
     <Compile Include="AppData.cs" />
     <Compile Include="ArchivePacker.cs">
       <SubType>Form</SubType>
@@ -161,31 +167,31 @@
       <DependentUpon>FontPickerDialog.cs</DependentUpon>
     </Compile>
     <Compile Include="FontProfile.cs" />
-    <Compile Include="FontEditor.cs">
+    <Compile Include="FontCreator.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="FontEditor.Designer.cs">
-      <DependentUpon>FontEditor.cs</DependentUpon>
+    <Compile Include="FontCreator.Designer.cs">
+      <DependentUpon>FontCreator.cs</DependentUpon>
     </Compile>
-    <Compile Include="FontEditor.FileOperations.cs">
+    <Compile Include="FontCreator.FileOperations.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="FontEditor.TextureOperations.cs">
+    <Compile Include="FontCreator.TextureOperations.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="FontEditor.UIHandlers.cs">
+    <Compile Include="FontCreator.UIHandlers.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="FontEditor.CharacterGenerator.cs">
+    <Compile Include="FontCreator.CharacterGenerator.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="FontEditor.FntImporter.cs">
+    <Compile Include="FontCreator.FntImporter.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="FontEditor.MissingCharDetector.cs">
+    <Compile Include="FontCreator.MissingCharDetector.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="FontEditor.Utilities.cs">
+    <Compile Include="FontCreator.Utilities.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="FormSettings.cs">
@@ -206,12 +212,6 @@
     </Compile>
     <Compile Include="MainLauncher.Designer.cs">
       <DependentUpon>MainLauncher.cs</DependentUpon>
-    </Compile>
-    <Compile Include="MainMenu.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="MainMenu.Designer.cs">
-      <DependentUpon>MainMenu.cs</DependentUpon>
     </Compile>
     <Compile Include="ModCreator.cs">
       <SubType>Form</SubType>
@@ -268,6 +268,10 @@
       <DependentUpon>About.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
+    <EmbeddedResource Include="AboutMain.resx">
+      <DependentUpon>AboutMain.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
     <EmbeddedResource Include="ArchivePacker.resx">
       <DependentUpon>ArchivePacker.cs</DependentUpon>
     </EmbeddedResource>
@@ -281,8 +285,8 @@
       <DependentUpon>AutoPacker.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <EmbeddedResource Include="FontEditor.resx">
-      <DependentUpon>FontEditor.cs</DependentUpon>
+    <EmbeddedResource Include="FontCreator.resx">
+      <DependentUpon>FontCreator.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="FontPickerDialog.resx">
@@ -290,10 +294,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="MainLauncher.resx">
       <DependentUpon>MainLauncher.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="MainMenu.resx">
-      <DependentUpon>MainMenu.cs</DependentUpon>
-      <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="ModCreator.resx">
       <DependentUpon>ModCreator.cs</DependentUpon>

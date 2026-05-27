@@ -83,5 +83,6 @@ namespace TTG_Tools.ClassesStructs.Text
         public byte[] someData;
         public LastLandbData lastLandbData;
         public byte[] lastNewBlockData; //For games since The Wolf among us
+        public bool hasIncorrectSizes;   // landbFileSize or blockLength mismatch detected
     }
 }

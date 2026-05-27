@@ -1,11 +1,10 @@
-﻿using System;
 using System.Windows.Forms;
 
 namespace TTG_Tools
 {
-    public partial class About : Form
+    public partial class AboutMain : Form
     {
-        public About()
+        public AboutMain()
         {
             InitializeComponent();
             buttonClose.Click += (s, e) => Close();

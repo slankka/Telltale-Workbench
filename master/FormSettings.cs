@@ -102,10 +102,10 @@ namespace TTG_Tools
 
                 if (Program.FirstTime)
                 {
-                    // First-time setup: close settings and launch FontEditor
+                    // First-time setup: close settings and launch FontCreator
                     this.Close();
                     Program.FirstTime = false;
-                    FontEditor fe = new FontEditor();
+                    FontCreator fe = new FontCreator();
                     fe.Show();
                 }
             }
