@@ -412,9 +412,7 @@
   <Import Project="packages\Magick.NET-Q16-AnyCPU.14.11.1\build\netstandard20\Magick.NET-Q16-AnyCPU.targets" Condition="Exists('packages\Magick.NET-Q16-AnyCPU.14.11.1\build\netstandard20\Magick.NET-Q16-AnyCPU.targets')" />
   <PropertyGroup>
     <PreBuildEvent>copy "$(SolutionDir)packages\Joveler.ZLibWrapper.1.3.1\build\net45\Precompiled\x64\zlibwapi.dll" "$(TargetDir)"
-copy "$(SolutionDir)packages\Joveler.ZLibWrapper.1.3.1\build\net45\Precompiled\x64\zlibwapi.dll" "$(TargetDir)zlibwapi.dll"
-copy "D:\SwitchGames\SAK_64bit\TTG-Tools\oo2core_5_win64.dll" "$(TargetDir)"
-copy "D:\SwitchGames\SAK_64bit\TTG-Tools\zlib.dll" "$(TargetDir)"</PreBuildEvent>
+copy "$(SolutionDir)packages\Joveler.ZLibWrapper.1.3.1\build\net45\Precompiled\x64\zlibwapi.dll" "$(TargetDir)zlibwapi.dll"</PreBuildEvent>
   </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
