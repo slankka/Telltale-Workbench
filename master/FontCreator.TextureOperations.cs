@@ -254,7 +254,16 @@ namespace TTG_Tools
 
             if (tex.OneByte == 0)
             {
-                tex.OneByte = 0x30;
+                // A New Font has no source texture metadata to preserve. Use
+                // the reversed MetaStream ToolProps branch instead of emitting
+                // an empty 0x30 branch; imported source fonts retain their own
+                // value because this only runs for an uninitialized texture.
+                tex.OneByte = isNewFontMode ? (byte)0x31 : (byte)0x30;
+            }
+
+            if (tex.OneByte == 0x31 && tex.UnknownData == null)
+            {
+                tex.UnknownData = CreateDefaultMetaStreamToolProps();
             }
 
             tex.ObjectName = SanitizeObjectHeaderName(tex.ObjectName ?? string.Empty);

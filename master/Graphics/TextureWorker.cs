@@ -147,7 +147,7 @@ namespace TTG_Tools.Graphics
                     }
                     else if (head.PF.Flags == 2 && head.PF.RgbBitCount == 8)
                     {
-                        textureFormat = (uint)ClassesStructs.TextureClass.NewTextureFormat.A8; 
+                        textureFormat = (uint)ClassesStructs.TextureClass.NewTextureFormat.A8;
                     }
                     else
                     {
@@ -460,7 +460,7 @@ namespace TTG_Tools.Graphics
                 bw.Write(head.PF.Size);
 
                 head.PF.Flags = (Format >= 0x40 || Format == 0x25) ? flags.DDPF_FOURCC : flags.DDPF_RGB;
-                
+
                 switch (Format)
                 {
                     case 0x00:
@@ -1113,7 +1113,7 @@ namespace TTG_Tools.Graphics
                         File.AppendAllText("test.txt", fi.Name + "\r\n");
                         return result;
                     }
-                
+
                 if (extract)
                 {
                     result = "File " + fi.Name + " successfully extracted. ";
@@ -1263,7 +1263,7 @@ namespace TTG_Tools.Graphics
                     FileStream fs = new FileStream(AppData.settings.pathForOutputFolder + "\\" + fi.Name, FileMode.CreateNew);
                     fs.Write(NewContent, 0, NewContent.Length);
                     fs.Close();
-                    
+
                     return result;
                 }
             }
@@ -1468,7 +1468,7 @@ namespace TTG_Tools.Graphics
                     // Tamanho real ocupado em memória no PS4 (incluindo espaços vazios)
                     int alignedSize = hAligned * wAligned * 64 * alignBlockSize;
 
-                    // Se o tamanho alinhado for maior que o tamanho linear original, 
+                    // Se o tamanho alinhado for maior que o tamanho linear original,
                     // atualizamos o MipSize no objeto para que o Header seja gravado corretamente.
                     if (alignedSize > tex.Tex.Textures[i].MipSize)
                     {
@@ -1614,13 +1614,17 @@ namespace TTG_Tools.Graphics
 
                 if (tex.OneByte == 0x31)
                 {
+                    if (tex.UnknownData == null || tex.UnknownData.someData == null
+                        || tex.UnknownData.len < 4 || tex.UnknownData.someData.Length < tex.UnknownData.len)
+                    {
+                        throw new InvalidDataException("Texture ToolProps is marked present (0x31), but its PropertySet block is missing or invalid.");
+                    }
+
                     bw.Write(tex.UnknownData.count);
                     pos += 4;
                     bw.Write(tex.UnknownData.Unknown1);
                     pos += 4;
-                    //bw.Write(tex.UnknownData.len);
-                    //pos += 4;
-                    bw.Write(tex.UnknownData.someData);
+                    bw.Write(tex.UnknownData.someData, 0, tex.UnknownData.len);
                     pos += tex.UnknownData.len;//tex.UnknownData.someData.Length;
                 }
 
@@ -2236,7 +2240,7 @@ namespace TTG_Tools.Graphics
 
                     tex.BlockPos += 4;
                 }
-                
+
                 tex.Content = new byte[tex.TexSize];
                 Array.Copy(binContent, poz, tex.Content, 0, tex.Content.Length);
                 poz += tex.isPS3 ? paddedSize : tex.Content.Length;
@@ -2296,7 +2300,7 @@ namespace TTG_Tools.Graphics
                     tex.Height = BitConverter.ToInt32(tmp, 0);
                 }
 
-                if ((tex.TexFlags != null) && (tex.TexFlags.TexSizes != null)) 
+                if ((tex.TexFlags != null) && (tex.TexFlags.TexSizes != null))
                 {
                     for (int j = 0; j < tex.TexFlags.TexSizes.Length; j++)
                     {
@@ -2338,7 +2342,7 @@ namespace TTG_Tools.Graphics
 
             tex.HasOneValueTex = false;
             int beginHeader = poz;
-            
+
             Array.Copy(binContent, poz, tmp, 0, tmp.Length);
             tex.SomeValue = BitConverter.ToInt32(tmp, 0);
             poz += 4;
@@ -2413,7 +2417,7 @@ namespace TTG_Tools.Graphics
                     tex.Zero = BitConverter.ToInt32(tmp, 0);
                     poz += 4;
                 }
-                
+
                 tmp = new byte[1];
                 Array.Copy(binContent, poz, tmp, 0, tmp.Length);
             }

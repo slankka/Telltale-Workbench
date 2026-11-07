@@ -257,6 +257,53 @@ namespace TTG_Tools
                 || platform == 10u || platform == 11u || platform == 13u || platform == 15u;
         }
 
+        /// <summary>
+        /// Creates the MetaStream ToolProps block used by the recently reversed
+        /// 0x31 texture-header branch.  UnknownData.someData includes the length
+        /// prefix because TextureWorker writes that block as one opaque blob.
+        /// The final 32 bytes are ImportHash; a font created from scratch has no
+        /// source image identity, so zero is the only honest default here.
+        /// </summary>
+        private static ClassesStructs.FlagsClass.SomeClassData CreateDefaultMetaStreamToolProps()
+        {
+            const int blockLength = 0x82;
+            byte[] block = new byte[blockLength];
+            using (MemoryStream stream = new MemoryStream(block))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write(blockLength); // Property content block size, including this field.
+                writer.Write(0);           // Parent property count.
+                writer.Write(3);           // Type groups: uint32, bool, SArray<byte, 32>.
+
+                writer.Write(0x4B26A2CA30DE3F32UL); // uint32
+                writer.Write(2);
+                writer.Write(0x281A2846A86CC06BUL); // unresolved uint32 property, default 0
+                writer.Write(0);
+                writer.Write(0xC720B2182BE4DD88UL); // AlphaMode
+                writer.Write(unchecked((uint)0xFFFFFFFF));
+
+                writer.Write(0x9004C5587575D6C0UL); // bool
+                writer.Write(2);
+                writer.Write(0x1F866CADECB045E2UL); // AllowCompression=true
+                writer.Write((byte)0x31);
+                writer.Write(0xA7793EFE02E09464UL); // GenerateMips=false
+                writer.Write((byte)0x30);
+
+                writer.Write(0x6B62F90BD5F79321UL); // SArray<unsigned char,32>
+                writer.Write(1);
+                writer.Write(0x087A51312327D5AAUL); // ImportHash
+                writer.Write(new byte[32]);
+            }
+
+            return new ClassesStructs.FlagsClass.SomeClassData
+            {
+                count = 2,       // mPropVersion
+                Unknown1 = 0,    // mPropertyFlags
+                len = blockLength,
+                someData = block
+            };
+        }
+
         private uint ResolveTargetPlatformForImportedDds(uint existingPlatform)
         {
             // Explicit swizzle selection has the highest priority.
