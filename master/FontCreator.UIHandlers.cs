@@ -279,15 +279,15 @@ namespace TTG_Tools
             }
         }
 
-        
 
-        
 
-        
 
-        
 
-        
+
+
+
+
+
 
         private void contextMenuStripExport_Import_Opening(object sender, CancelEventArgs e)
         {
@@ -770,7 +770,7 @@ namespace TTG_Tools
             }
         }
 
-        
+
 
         private void rbNoSwizzle_CheckedChanged(object sender, EventArgs e)
         {
@@ -780,6 +780,8 @@ namespace TTG_Tools
             AppData.settings.swizzlePSVita = false;
             AppData.settings.swizzleNintendoWii = false;
             Settings.SaveConfig(AppData.settings);
+
+            ApplyPlatformToLoadedFont(2u);
         }
 
         private void rbPS4Swizzle_CheckedChanged(object sender, EventArgs e)
@@ -790,6 +792,8 @@ namespace TTG_Tools
             AppData.settings.swizzlePSVita = false;
             AppData.settings.swizzleNintendoWii = false;
             Settings.SaveConfig(AppData.settings);
+
+            ApplyPlatformToLoadedFont(11u);
         }
 
         private void rbSwitchSwizzle_CheckedChanged(object sender, EventArgs e)
@@ -800,6 +804,8 @@ namespace TTG_Tools
             AppData.settings.swizzlePSVita = false;
             AppData.settings.swizzleNintendoWii = false;
             Settings.SaveConfig(AppData.settings);
+
+            ApplyPlatformToLoadedFont(15u);
         }
 
         private void rbXbox360Swizzle_CheckedChanged(object sender, EventArgs e)
@@ -812,6 +818,8 @@ namespace TTG_Tools
                 AppData.settings.swizzlePSVita = false;
                 AppData.settings.swizzleNintendoWii = false;
                 Settings.SaveConfig(AppData.settings);
+
+                ApplyPlatformToLoadedFont(4u);
             }
         }
 
@@ -825,6 +833,8 @@ namespace TTG_Tools
                 AppData.settings.swizzleXbox360 = false;
                 AppData.settings.swizzleNintendoWii = false;
                 Settings.SaveConfig(AppData.settings);
+
+                ApplyPlatformToLoadedFont(9u);
             }
         }
 
@@ -838,7 +848,66 @@ namespace TTG_Tools
                 AppData.settings.swizzleXbox360 = false;
                 AppData.settings.swizzleNintendoWii = true;
                 Settings.SaveConfig(AppData.settings);
+
+                // Wii has no font-platform equivalent in the texture header format,
+                // so the loaded font is intentionally left untouched.
+                ApplyPlatformToLoadedFont(0u);
             }
+        }
+
+        /// <summary>
+        /// Applies the platform selected in the swizzle radio group to every texture that is
+        /// already loaded, so that switching the radio before Save actually changes the output.
+        ///
+        /// Background: platform is only assigned when a DDS is imported
+        /// (ReplaceTexture -> ResolveTargetPlatformForImportedDds). The radio buttons used to
+        /// update AppData.settings only, so textures imported earlier kept their original
+        /// platform no matter what was selected afterwards. The visible symptom was
+        /// "I switched to PC before exporting and still got platform=15".
+        ///
+        /// The pixel path depends on this field too: ReplaceNewTextures only swizzles for the
+        /// platform recorded here, so updating it is enough to change the written pixel encoding.
+        /// Among the fonts examined, no other texture-header field differs between PC(2) and
+        /// Switch(15), so nothing else needs rewriting.
+        ///
+        /// Pass 0 (or any unsupported id) to leave the loaded font alone.
+        /// </summary>
+        private void ApplyPlatformToLoadedFont(uint platform)
+        {
+            if (platform == 0u) return;
+            if (font == null || !font.NewFormat || font.NewTex == null) return;
+            if (font.NewTex.Length == 0) return;
+
+            bool changed = false;
+            foreach (var tex in font.NewTex)
+            {
+                if (tex == null) continue;
+                if (tex.platform.platform == platform) continue;
+
+                tex.platform.platform = platform;
+                changed = true;
+
+                // Re-run the per-platform header defaults so Switch-specific fields
+                // (unknownFlags.block / HasOneValueTex / OneValue / 8-byte subBlocks)
+                // get filled in when moving to Switch, and nothing is left half-set.
+                EnsureNewTextureHeaderDefaults(tex);
+            }
+
+            if (!changed) return;
+
+            edited = true;
+
+            if (textBoxLogOutput != null && !textBoxLogOutput.IsDisposed)
+            {
+                textBoxLogOutput.AppendText(
+                    $"[Platform] Applied platform={platform} to {font.NewTex.Length} texture(s). " +
+                    "Pixel data will be swizzled for this platform on save.\r\n");
+            }
+
+            // Refresh the texture table so TexSize (which can change with the platform's
+            // mip padding) is shown accurately before saving.
+            fillTableofTextures(font);
+            UpdateTexturePreview();
         }
 
         private void buttonSaveLogAs_Click(object sender, EventArgs e)

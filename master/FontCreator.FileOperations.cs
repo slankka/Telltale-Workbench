@@ -121,7 +121,11 @@ private ClassesStructs.FontClass.ClassFont CreateEmptyNewFormatTemplateFont(stri
             template.headerSize = 0;
             template.texSize = 0;
             template.hasOneFloatValue = false;
-            template.LastZero = 0;
+            // Official 6VSM/5VSM fonts write the MetaStream single-byte bool '0' (0x30) here.
+            template.LastZero = 0x30;
+            // null => Save replays the official 22-byte trailer constant. Open-mode fonts
+            // overwrite this with the bytes actually found in the source file.
+            template.trailingBlockAfterTextureHeaders = null;
             template.FntBaseLine = 0;
             template.TexCount = 0;
             template.feedFace = null;
@@ -546,21 +550,71 @@ private ClassesStructs.FontClass.ClassFont CreateEmptyNewFormatTemplateFont(stri
                         font.One = binContent[poz];
                         poz++;
 
-                        //Temporary solution
-                        if ((font.One == 0x31 && (Encoding.ASCII.GetString(check_header) == "5VSM"))
-                            || (Encoding.ASCII.GetString(check_header) == "6VSM"))
+                        // metrics float #1. On official 6VSM fonts (and 5VSM with the 0x31
+                        // ToolProps branch) this is FNT common lineHeight. Older builds of this
+                        // tool stored FntBaseLine here instead; the swap is detected below once
+                        // both floats are known. For 5VSM without 0x31 there is only ONE float,
+                        // which is lineHeight — hasMetricsPair tracks that.
+                        bool hasMetricsPair = (font.One == 0x31 && (Encoding.ASCII.GetString(check_header) == "5VSM"))
+                            || (Encoding.ASCII.GetString(check_header) == "6VSM");
+
+                        float metricsFirst = 0f;
+                        if (hasMetricsPair)
                         {
                             tmp = new byte[4];
                             Array.Copy(binContent, poz, tmp, 0, tmp.Length);
                             poz += 4;
 
-                            font.FntBaseLine = BitConverter.ToSingle(tmp, 0);
+                            metricsFirst = BitConverter.ToSingle(tmp, 0);
                         }
 
+                        // metrics float #2 — FNT common base (the baseline the glyphs sit on).
                         tmp = new byte[4];
                         Array.Copy(binContent, poz, tmp, 0, tmp.Length);
                         poz += 4;
-                        font.FntLineHeight = BitConverter.ToSingle(tmp, 0);
+                        float metricsSecond = BitConverter.ToSingle(tmp, 0);
+
+                        if (!hasMetricsPair)
+                        {
+                            // Single-float layout: the value is lineHeight, there is no separate base.
+                            font.FntLineHeight = metricsSecond;
+                            font.FntBaseLine = 0f;
+                            font.metricsStoredSwapped = false;
+                        }
+                        else if (FontClass.ClassFont.AreMetricsSwapped(metricsFirst, metricsSecond))
+                        {
+                            // Legacy order (base, lineHeight): recover the real semantics so the
+                            // rest of the app always sees correct fields, and remember the
+                            // on-disk order so Save can reproduce the same bytes.
+                            font.FntBaseLine = metricsFirst;
+                            font.FntLineHeight = metricsSecond;
+                            font.metricsStoredSwapped = true;
+                        }
+                        else
+                        {
+                            // Official order (lineHeight, base).
+                            font.FntLineHeight = metricsFirst;
+                            font.FntBaseLine = metricsSecond;
+                            font.metricsStoredSwapped = false;
+
+                            // A non-zero base that is still larger than lineHeight cannot come from
+                            // the legacy-order swap (that case is handled above). It means the file
+                            // itself carries inconsistent metrics — most often a 5VSM font whose
+                            // single lineHeight float was misread as the pair's first element.
+                            // Keep the bytes intact (Save replays them) but say so in the log,
+                            // because the on-screen spacing will look wrong.
+                            if (font.FntLineHeight > 0f && font.FntBaseLine > font.FntLineHeight)
+                            {
+                                if (textBoxLogOutput != null && !textBoxLogOutput.IsDisposed)
+                                {
+                                    textBoxLogOutput.AppendText(
+                                        $"[OpenFontDiag] WARNING: metrics look inconsistent " +
+                                        $"(lineHeight={font.FntLineHeight}, base={font.FntBaseLine}, " +
+                                        $"base > lineHeight). The file is loaded unchanged but line " +
+                                        $"spacing may render incorrectly.\r\n");
+                                }
+                            }
+                        }
 
                         tmp = new byte[4];
                         Array.Copy(binContent, poz, tmp, 0, tmp.Length);
@@ -801,7 +855,7 @@ private ClassesStructs.FontClass.ClassFont CreateEmptyNewFormatTemplateFont(stri
                         {
                             textBoxLogOutput.AppendText($"[OpenFontDiag] NewFormat={font.NewFormat}, CharCount={font.glyph.CharCount}, TexCount={font.TexCount}\r\n");
                             textBoxLogOutput.AppendText($"[OpenFontDiag] FontUnknowns one=0x{font.One:x2}, FntBaseLine={font.FntBaseLine}, FntLineHeight={font.FntLineHeight}, lineHeight={font.lineHeight}, halfValue={font.halfValue}, oneValue={font.oneValue}, hasScaleValue={font.hasScaleValue}, hasOneFloatValue={font.hasOneFloatValue}, hasLineHeight={font.hasLineHeight}, lastZero=0x{font.LastZero:x2}, feedFace={FormatBytesPreview(font.feedFace)}\r\n");
-                            textBoxLogOutput.AppendText($"[OpenFontDiag] ✦ FNT mapping: FntLineHeight (lineHgt)={font.FntLineHeight}, FntBaseLine (base)={font.FntBaseLine}, lineHeight field={font.lineHeight}, FntInfoSize={font.FntInfoSize}\r\n");
+                            textBoxLogOutput.AppendText($"[OpenFontDiag] ✦ FNT mapping: lineHeight={font.FntLineHeight}, base={font.FntBaseLine}, storedOrder={(font.metricsStoredSwapped ? "legacy (base,lineHeight)" : "official (lineHeight,base)")}, lineHeight field={font.lineHeight}, FntInfoSize={font.FntInfoSize}\r\n");
                             textBoxLogOutput.AppendText($"[OpenFontDiag] TextureHeaderStartPoz=0x{poz:x}\r\n");
                         }
 
@@ -893,6 +947,31 @@ private ClassesStructs.FontClass.ClassFont CreateEmptyNewFormatTemplateFont(stri
                                 Array.Copy(binContent, poz, tmp, 0, tmp.Length);
                                 font.LastZero = tmp[0];
                                 poz++;
+
+                                // Capture the opaque trailer that sits between LastZero and the pixel data.
+                                // headerSize spans [sectionStart, pixelDataStart), so everything left after
+                                // LastZero is exactly this block: 0 bytes for Batman / tool-generated files,
+                                // 22 bytes for TWD S1-S2 and The Wolf Among Us (23 bytes with LastZero).
+                                // tmpHeader is a copy of binContent[0 .. sectionStart), so its length is
+                                // the exact end of the element table.
+                                int sectionStartPoz = tmpHeader.Length;
+                                int sectionEndPoz = sectionStartPoz + font.headerSize;
+                                if (font.headerSize > 0 && sectionEndPoz > poz && sectionEndPoz <= binContent.Length)
+                                {
+                                    font.trailingBlockAfterTextureHeaders = new byte[sectionEndPoz - poz];
+                                    Array.Copy(binContent, poz, font.trailingBlockAfterTextureHeaders, 0,
+                                        font.trailingBlockAfterTextureHeaders.Length);
+                                    poz = sectionEndPoz;
+                                }
+                                else
+                                {
+                                    font.trailingBlockAfterTextureHeaders = new byte[0];
+                                }
+
+                                if (textBoxLogOutput != null && !textBoxLogOutput.IsDisposed)
+                                {
+                                    textBoxLogOutput.AppendText($"[OpenFontDiag] LastZero=0x{font.LastZero:x2}, trailingBlockLen={font.trailingBlockAfterTextureHeaders.Length}, preview={FormatBytesPreview(font.trailingBlockAfterTextureHeaders)}\r\n");
+                                }
                             }
 
                             for (int k = 0; k < font.glyph.CharCount; k++)
@@ -1097,13 +1176,22 @@ private ClassesStructs.FontClass.ClassFont CreateEmptyNewFormatTemplateFont(stri
 
             bw.Write(font.One);
 
-            if ((font.One == 0x31 && (Encoding.ASCII.GetString(check_header) == "5VSM"))
-                        || (Encoding.ASCII.GetString(check_header) == "6VSM"))
+            bool writeMetricsPair = (font.One == 0x31 && (Encoding.ASCII.GetString(check_header) == "5VSM"))
+                        || (Encoding.ASCII.GetString(check_header) == "6VSM");
+
+            // Official order is (lineHeight, base). Files captured from a legacy build that
+            // stored them reversed are replayed in that same legacy order so an untouched
+            // Open -> Save stays byte-identical. New fonts always use the official order.
+            bool writeSwapped = font.metricsStoredSwapped;
+
+            if (writeMetricsPair)
             {
-                bw.Write(font.FntBaseLine);
+                bw.Write(writeSwapped ? font.FntBaseLine : font.FntLineHeight);
             }
 
-            bw.Write(font.FntLineHeight);
+            bw.Write(writeMetricsPair
+                ? (writeSwapped ? font.FntLineHeight : font.FntBaseLine)
+                : font.FntLineHeight);
 
             if(font.feedFace != null)
             {
@@ -1319,7 +1407,34 @@ private ClassesStructs.FontClass.ClassFont CreateEmptyNewFormatTemplateFont(stri
                         // LastZero belongs to the gap after texture headers and before pixel data.
                         if (font.NewTex[0].SomeValue > 4)
                         {
-                            bw.Write(font.LastZero);
+                            // Opened fonts replay the byte exactly as captured (Batman and older tool
+                            // output legitimately carry 0x00). Fonts created from scratch use the
+                            // official MetaStream single-byte bool '0' (0x30), never 0x00 — 0x00 would
+                            // make the reader fall back to the 4-byte bool form and desync the stream.
+                            bool capturedFromFile = font.trailingBlockAfterTextureHeaders != null;
+                            byte lastZeroToWrite = capturedFromFile
+                                ? font.LastZero
+                                : (font.LastZero != 0 ? font.LastZero : (byte)0x30);
+                            bw.Write(lastZeroToWrite);
+
+                            // Replay the opaque trailer captured on Open. When the font was created
+                            // from scratch there is nothing to replay, so the constant observed in all
+                            // official 23-byte samples is written instead. An empty captured trailer
+                            // is preserved as-is.
+                            byte[] trailer = capturedFromFile
+                                ? font.trailingBlockAfterTextureHeaders
+                                : FontClass.DefaultTrailingBlockAfterTextureHeaders;
+                            if (trailer != null && trailer.Length > 0)
+                            {
+                                bw.Write(trailer);
+                            }
+
+                            if (textBoxLogOutput != null && !textBoxLogOutput.IsDisposed)
+                            {
+                                textBoxLogOutput.AppendText($"[SaveFont] LastZero=0x{lastZeroToWrite:x2} " +
+                                    $"({(capturedFromFile ? "captured" : "default")} trailing block, " +
+                                    $"{(trailer == null ? 0 : trailer.Length)} bytes)\r\n");
+                            }
                         }
 
                         // Pixel data starts immediately after the optional LastZero byte.

@@ -11,6 +11,7 @@
 /desktop.ini
 .claude
 .vscode
+.agents
 .deepseek
 /docs
 chars-for-BMFont
@@ -27,3 +28,8 @@ landb-research
 /master/.vs/TTG Tools/FileContentIndex
 *.csproj.user
 UpgradeLog.*
+
+# Nested git repositories and scratch tooling — tracked by their own repos
+# (font_analysis -> slankka/TTG-FONT-Extractor) or not tracked at all.
+/font_analysis
+/font-props-viewer

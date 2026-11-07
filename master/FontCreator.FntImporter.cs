@@ -50,8 +50,14 @@ namespace TTG_Tools
                     font.headerSize = 0;
                     font.texSize = 0;
                     font.hasOneFloatValue = false;
-                    font.LastZero = 0;
+                    // Official 6VSM/5VSM fonts write the MetaStream single-byte bool '0' (0x30).
+                    font.LastZero = 0x30;
+                    // null => Save replays the official 22-byte trailer constant.
+                    font.trailingBlockAfterTextureHeaders = null;
                     font.FntBaseLine = 0;
+                    // A font built from an imported .fnt is written in official order; the
+                    // legacy-order flag must not leak in from a previously opened font.
+                    font.metricsStoredSwapped = false;
 
                     // Initialize default 6VSM elements for game runtime compatibility.
                     InitializeDefault6VsmElements(font);
@@ -173,6 +179,7 @@ namespace TTG_Tools
                                 switch (splitted[k].ToLower())
                                 {
                                     case "lineheight":
+                                        // FNT common lineHeight maps straight onto FntLineHeight.
                                         font.FntLineHeight = Convert.ToSingle(splitted[k + 1]);
 
                                         if(check_header != null && Encoding.ASCII.GetString(check_header) == "5VSM" && font.hasLineHeight)
@@ -185,6 +192,7 @@ namespace TTG_Tools
                                         if (check_header != null && ((font.One == 0x31 && (Encoding.ASCII.GetString(check_header) == "5VSM"))
                                             || (Encoding.ASCII.GetString(check_header) == "6VSM")))
                                         {
+                                            // FNT common base maps straight onto FntBaseLine.
                                             font.FntBaseLine = Convert.ToSingle(splitted[k + 1]);
                                         }
                                         else font.FntLineHeight = Convert.ToSingle(splitted[k + 1]);
@@ -238,6 +246,25 @@ namespace TTG_Tools
                             }
                             // Log FNT header values after parsing common block
                             textBoxLogOutput.AppendText($"[FNT Import] info size={font.FntInfoSize}, common lineHeight={font.FntLineHeight}, common base={font.FntBaseLine}, header={Encoding.ASCII.GetString(check_header ?? new byte[0])}\r\n");
+
+                            // An .fnt exported by an older build of this tool carries the two
+                            // metrics the other way round: 'lineHeight=' holds the real base and
+                            // 'base=' holds the real lineHeight. Reading them by name as we do
+                            // above therefore yields base > lineHeight, which is physically
+                            // impossible. Detect that and swap back so the saved .font keeps the
+                            // official (lineHeight, base) order instead of inheriting the bug.
+                            if (FontClass.ClassFont.AreMetricsSwapped(font.FntLineHeight, font.FntBaseLine))
+                            {
+                                float swapTmp = font.FntLineHeight;
+                                font.FntLineHeight = font.FntBaseLine;
+                                font.FntBaseLine = swapTmp;
+
+                                textBoxLogOutput.AppendText(
+                                    "[FNT Import] WARNING: this .fnt has base > lineHeight, which means it " +
+                                    "was probably exported by an older version of this tool that wrote the " +
+                                    $"two metrics swapped. Values corrected to lineHeight={font.FntLineHeight}, " +
+                                    $"base={font.FntBaseLine}.\r\n");
+                            }
                         }
 
                         if (strings[m].Contains("page id"))
