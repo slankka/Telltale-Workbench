@@ -348,64 +348,82 @@ namespace TTG_Tools
             if (scr == null) return;
 
             Rectangle wa = scr.WorkingArea;
-            int ncH = base.Height - ClientSize.Height;
-            int ncW = base.Width - ClientSize.Width;
-
-            int maxClientH = wa.Height - ncH;
-            int maxClientW = wa.Width - ncW;
 
             _restoringSize = true;
             try
             {
-                Size target = ClientSize;
-                if (maxClientH > 0 && target.Height > maxClientH) target.Height = maxClientH;
-                if (maxClientW > 0 && target.Width > maxClientW) target.Width = maxClientW;
-
-                if (target != ClientSize)
-                    ClientSize = target;
-
-                // 按控件实际占用决定是否需要滚动
+                // 迭代夹取：设置 ClientSize / AutoScroll 会触发多轮布局，
+                // 滚动条出现又会改变非客户区尺寸，单次夹取不够（实测仍会溢出）。
+                // 这里反复收敛，直到窗口确实落进工作区或达到稳定。
                 int needW = 0, needH = 0;
-                foreach (Control c in Controls)
+                for (int pass = 0; pass < 6; pass++)
                 {
-                    if (!c.Visible || c is MenuStrip) continue;
-                    if (c.Right > needW) needW = c.Right;
-                    if (c.Bottom > needH) needH = c.Bottom;
+                    Size before = ClientSize;
+                    Size beforeForm = base.Size;
+
+                    // 每轮都重新测量内容需求：滚动范围必须跟上实际控件尺寸
+                    // （实测只在循环外测一次会导致 minSize 停留在旧值）。
+                    needW = 0;
+                    needH = 0;
+                    foreach (Control c in Controls)
+                    {
+                        if (!c.Visible || c is MenuStrip) continue;
+                        if (c.Right > needW) needW = c.Right;
+                        if (c.Bottom > needH) needH = c.Bottom;
+                    }
+
+                    // 内容装不下 → 开滚动
+                    bool needScroll = needW > ClientSize.Width || needH > ClientSize.Height;
+                    if (needScroll)
+                    {
+                        if (!AutoScroll) AutoScroll = true;
+                        if (AutoScrollMinSize.Width < needW || AutoScrollMinSize.Height < needH)
+                            AutoScrollMinSize = new Size(needW, needH);
+                    }
+                    else if (AutoScroll)
+                    {
+                        AutoScroll = false;
+                        AutoScrollMinSize = System.Drawing.Size.Empty;
+                    }
+
+                    // 重新取非客户区尺寸（滚动条可能改变它）
+                    int ncH = base.Height - ClientSize.Height;
+                    int ncW = base.Width - ClientSize.Width;
+
+                    Size t = ClientSize;
+                    int limH = wa.Height - ncH;
+                    int limW = wa.Width - ncW;
+                    if (limH > 0 && t.Height > limH) t.Height = limH;
+                    if (limW > 0 && t.Width > limW) t.Width = limW;
+                    if (t != ClientSize)
+                        ClientSize = t;
+
+                    // 位置夹取（用当前真实 Form 尺寸，避免越界）
+                    int x = Left, y = Top;
+                    if (x + Wide() > wa.Right) x = wa.Right - Wide();
+                    if (y + High() > wa.Bottom) y = wa.Bottom - High();
+                    if (x < wa.Left) x = wa.Left;
+                    if (y < wa.Top) y = wa.Top;
+                    if (x != Left || y != Top)
+                        Location = new Point(x, y);
+
+                    DpiDiag("  [fit pass " + pass + "] client=" + ClientSize +
+                            " form=" + base.Size + " scroll=" + AutoScroll +
+                            " need=" + needW + "x" + needH);
+
+                    // 已稳定（尺寸没再变化）就停
+                    if (ClientSize == before && base.Size == beforeForm)
+                        break;
+
+                    Application.DoEvents();
                 }
 
-                if (needW > ClientSize.Width || needH > ClientSize.Height)
-                {
-                    AutoScroll = true;
-                    AutoScrollMinSize = new Size(needW, needH);
+                // 最终硬约束：无论前面收敛如何，确保外框不超过工作区
+                ForceWindowInside(wa);
 
-                    // 启用滚动后 WinForms 会为滚动条预留空间，窗体可能因此变大。
-                    // 这里再夹一次，确保最终窗口确实落在工作区内。
-                    int ncH2 = base.Height - ClientSize.Height;
-                    int ncW2 = base.Width - ClientSize.Width;
-                    Size t2 = ClientSize;
-                    if (wa.Height - ncH2 > 0 && t2.Height > wa.Height - ncH2) t2.Height = wa.Height - ncH2;
-                    if (wa.Width - ncW2 > 0 && t2.Width > wa.Width - ncW2) t2.Width = wa.Width - ncW2;
-                    if (t2 != ClientSize)
-                        ClientSize = t2;
-                }
-                else
-                {
-                    AutoScroll = false;
-                    AutoScrollMinSize = System.Drawing.Size.Empty;
-                }
-
-                // 位置：完整夹进工作区（副屏在主屏上方时 y 为负，统一处理）
-                int x = Left, y = Top;
-                if (x + base.Width > wa.Right) x = wa.Right - base.Width;
-                if (y + base.Height > wa.Bottom) y = wa.Bottom - base.Height;
-                if (x < wa.Left) x = wa.Left;
-                if (y < wa.Top) y = wa.Top;
-                if (x != Left || y != Top)
-                    Location = new Point(x, y);
-
-                DpiDiag("  [fit] ClientSize=" + ClientSize + " Form=" + Size +
-                        " need=" + needW + "x" + needH +
-                        " scroll=" + AutoScroll + " WA=" + wa);
+                DpiDiag("  [fit done] client=" + ClientSize + " form=" + base.Size +
+                        " location=" + Location + " scroll=" + AutoScroll +
+                        " minSize=" + AutoScrollMinSize + " WA=" + wa);
             }
             finally
             {
@@ -413,12 +431,73 @@ namespace TTG_Tools
             }
         }
 
-        /// <summary>DPI 相关诊断输出（仅在 Debug 构建下可见，不产生文件）。</summary>
-        [System.Diagnostics.Conditional("DEBUG")]
+        /// <summary>当前窗体外框宽度（Designer 里 Width 字段遮蔽了 Control.Width）。</summary>
+        private int Wide()
+        {
+            try { return base.Width; } catch { return base.Size.Width; }
+        }
+
+        /// <summary>当前窗体外框高度。</summary>
+        private int High()
+        {
+            try { return base.Height; } catch { return base.Size.Height; }
+        }
+
+        /// <summary>
+        /// 最终硬约束：用 MoveWindow 直接设定外框尺寸与位置，
+        /// 绕过 WinForms 布局循环，保证窗口一定落在工作区内。
+        /// </summary>
+        private void ForceWindowInside(Rectangle wa)
+        {
+            if (Handle == IntPtr.Zero) return;
+
+            int w = Math.Min(Wide(), wa.Width);
+            int h = Math.Min(High(), wa.Height);
+
+            int x = Left, y = Top;
+            if (x + w > wa.Right) x = wa.Right - w;
+            if (y + h > wa.Bottom) y = wa.Bottom - h;
+            if (x < wa.Left) x = wa.Left;
+            if (y < wa.Top) y = wa.Top;
+
+            if (w == Wide() && h == High() && x == Left && y == Top)
+                return;
+
+            NativeMethods.MoveWindow(Handle, x, y, w, h, true);
+            Application.DoEvents();
+            DpiDiag("  [force] -> loc=" + new Point(x, y) + " size=" + new Size(w, h) +
+                    " 实际=" + Bounds);
+        }
+
+        /// <summary>Win32 互操作。</summary>
+        private static class NativeMethods
+        {
+            [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+            internal static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
+        }
+
+        /// <summary>
+        /// DPI / 布局诊断输出。
+        /// 写入临时文件以便在 Release 构建下也能排查真实跨屏问题；
+        /// 仅在 TTG_DPI_DIAG 环境变量存在时才记录，正常使用零开销。
+        /// </summary>
         internal static void DpiDiag(string msg)
         {
-            System.Diagnostics.Debug.WriteLine("[DPI] " + msg);
+            if (!_diagEnabled.HasValue)
+                _diagEnabled = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TTG_DPI_DIAG"));
+
+            if (!_diagEnabled.Value) return;
+
+            try
+            {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ttg-dpi-diag.log"),
+                    DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + Environment.NewLine);
+            }
+            catch { }
         }
+
+        private static bool? _diagEnabled;
 
         private int SafeDpi()
         {
