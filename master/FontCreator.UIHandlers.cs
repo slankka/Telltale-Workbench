@@ -94,16 +94,52 @@ namespace TTG_Tools
         {
             if (dpi <= 0) dpi = 96;
             float s = dpi / 96f;
+            _lastScale = s;      // 供 EdgePadTop/BottomEdgePad 等留白计算使用
+
+            int measuredW96 = (int)Math.Round(ClientSize.Width / s);
+            int measuredH96 = (int)Math.Round(ClientSize.Height / s);
+
+            // 【重要】ClientSize 可能被 WinForms 自动缩放污染，但控件坐标不受影响。
+            // 实测（125% 主屏启动，设计值 1373x700）：
+            //   Load 时 ClientSize 读回 1371x692，而控件坐标仍是原始设计值 →
+            //   内容需求 694 > 被污染的客户区 692，于是"客户区装不下自己的内容"，
+            //   拖到 175% 屏时按 692 缩放得到 865，比内容 868 少 3px
+            //   → 白开一条垂直滚动条（100% 主屏不受影响，因为 700 > 694 有余量）。
+            //
+            // 因此客户区基线不能小于**内容需求**，否则后续所有缩放都带着这个缺口。
+            // 额外再留 4px 取整缓冲：不同 DPI 的 round 偏差会再次造成 1~3px 缺口
+            // （实测 175% 屏上出现过差 3px 被迫开滚动条的情况）。
+            int needW96 = (int)Math.Ceiling(ContentNeedWidth() / s) + 4;
+            int needH96 = (int)Math.Ceiling(ContentNeedHeight() / s) + 4;
 
             _design96 = new Size(
-                (int)Math.Round(ClientSize.Width / s),
-                (int)Math.Round(ClientSize.Height / s));
+                Math.Max(measuredW96, needW96),
+                Math.Max(measuredH96, needH96));
+
+            if (_design96.Width != measuredW96 || _design96.Height != measuredH96)
+            {
+                DpiDiag("[CaptureDesign96] ClientSize 被污染 " + measuredW96 + "x" + measuredH96 +
+                        " < 内容需求 " + needW96 + "x" + needH96 +
+                        " → 基线修正为 " + _design96 + " (dpi=" + dpi + ")");
+            }
 
             // 记录 96 DPI 下的"边框 + 标题栏"厚度。
             // 这里必须存成基线常量：运行时用 base.Width - ClientSize.Width 测量会被
             // 操作系统的"窗口不得超过屏幕"钳制污染（实测 200% 时会算出负数）。
-            _designNcW96 = (int)Math.Round((base.Width - ClientSize.Width) / s);
-            _designNcH96 = (int)Math.Round((base.Height - ClientSize.Height) / s);
+            //
+            // Load 时窗口还没被钳制，测量是安全的；但仍做下限保护 ——
+            // 若为 0 或负数，按 Windows 标准值兜底（标题栏 ≈ 31px @96dpi，
+            // 边框 4~8px），否则后续 limH/limW 会被算成整个工作区而失去收缩能力。
+            int ncW96 = (int)Math.Round((base.Width - ClientSize.Width) / s);
+            int ncH96 = (int)Math.Round((base.Height - ClientSize.Height) / s);
+
+            _designNcW96 = ncW96 > 0 ? ncW96 : 8;
+            _designNcH96 = ncH96 > 0 ? ncH96 : 39;
+
+            if (ncW96 <= 0 || ncH96 <= 0)
+                DpiDiag("[CaptureDesign96] 非客户区测量异常 ncW96=" + ncW96 +
+                        " ncH96=" + ncH96 + " → 使用兜底值 " + _designNcW96 + "x" + _designNcH96 +
+                        " (base=" + base.Size + " client=" + ClientSize + " dpi=" + dpi + ")");
 
             _designBounds96 = new System.Collections.Generic.Dictionary<Control, Rectangle>();
             CaptureBounds96Recursive(this, s);
@@ -126,6 +162,166 @@ namespace TTG_Tools
         {
             return Math.Max(0, (int)Math.Round(_designNcH96 * s));
         }
+
+        /// <summary>
+        /// 顶部/左右贴边余量（仅够鼠标抓取窗体边缘即可）。
+        /// <para>
+        /// 旧值 `Math.Max(24, ncH) + 6` 把整条标题栏又让了一遍，而窗体的高度
+        /// 本来就包含标题栏 → 等于重复计算，175% 下白扔 81px。
+        /// </para>
+        /// </summary>
+        private int EdgePadTop
+        {
+            get { return Math.Max(6, (int)Math.Round(6 * _lastScale)); }
+        }
+
+        /// <summary>左右贴边余量。</summary>
+        private int EdgePadSide
+        {
+            get { return Math.Max(4, (int)Math.Round(4 * _lastScale)); }
+        }
+
+        /// <summary>
+        /// 底部留白：只为「自动隐藏的任务栏弹出」预留，其它情况一律用最小贴边余量。
+        /// <para>
+        /// 旧值 `Math.Max(24, wa.Height / 12)` 是无条件预留（1440 → 120px），
+        /// 但 rcWork 在任务栏**常显**时已经把任务栏扣掉了，在任务栏位于**别的屏**
+        /// 时更是完全不需要。实测 175% 副屏正是被这 120px 拖累：
+        /// 内容 1217 + 非客户区 75 = 1292，工作区 1440，余量 148 被 81+120=201 吃掉
+        /// → 客户区被压到 1164，差 53px 而被迫出现垂直滚动条。
+        /// </para>
+        /// </summary>
+        private int BottomEdgePad(Screen scr, Rectangle wa)
+        {
+            int minPad = Math.Max(4, (int)Math.Round(4 * _lastScale));
+
+            // ① 任务栏不是「自动隐藏」→ rcWork 已经把它扣掉了，
+            //    窗口底部贴到 wa.Bottom 本身就不会被遮挡，无需额外预留。
+            if (!TaskbarAutoHide()) return minPad;
+
+            // ② 自动隐藏时 rcWork 往往仍报整屏高度，需要为"弹出"预留。
+            //    但只有任务栏**确实挂在这块屏幕**上才需要（多屏时常见：
+            //    主屏有任务栏、副屏没有）。
+            if (scr != null)
+            {
+                Rectangle tb = HorizontalTaskbarOnScreen(scr.Bounds);
+                if (tb.IsEmpty) return minPad;
+            }
+
+            // ③ 自动隐藏时任务栏窗口可能只剩 2px 高的触发条，
+            //    直接取它的 Rect 高度不可靠。改用「标准任务栏高度 × 缩放」估算：
+            //    96 DPI 下 Win10/Win11 默认约 48px。
+            int reserve = Math.Max(minPad, (int)Math.Round(48 * _lastScale));
+
+            int cap = Math.Max(minPad, wa.Height / 6);              // 兜底，别把窗口压太矮
+            if (reserve > cap) reserve = cap;
+
+            DpiDiag("  [BottomEdgePad] 自动隐藏任务栏，预留 " + reserve +
+                    " (scale=" + _lastScale + ")");
+            return reserve;
+        }
+
+        /// <summary>任务栏是否为「自动隐藏」（ABS_AUTOHIDE）。</summary>
+        private static bool TaskbarAutoHide()
+        {
+            try
+            {
+                // ABM_GETSTATE = 4；返回 ABS_AUTOHIDE(0x1) | ABS_ALWAYSONTOP(0x2)
+                var abd = new APPBARDATA();
+                abd.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(APPBARDATA));
+
+                IntPtr state = SHAppBarMessage(4u, ref abd);
+                return ((int)state & 0x1) != 0;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 找出「落在指定屏幕矩形内」的水平任务栏矩形。
+        /// <para>
+        /// 需要同时看两类窗口：
+        /// · `Shell_TrayWnd` —— 主任务栏（ABM_GETTASKBARPOS 可直接取）
+        /// · `Shell_SecondaryTrayWnd` —— Win10/11「在所有显示器上显示任务栏」时
+        ///   副屏各自的任务栏，ABM_GETTASKBARPOS 查不到，必须枚举窗口。
+        /// </para>
+        /// 竖排任务栏不影响高度，直接忽略。
+        /// </summary>
+        private static Rectangle HorizontalTaskbarOnScreen(Rectangle screenRect)
+        {
+            Rectangle best = Rectangle.Empty;
+            foreach (Rectangle r in EnumTaskbarRects())
+            {
+                if (r.Width <= 0 || r.Height <= 0) continue;
+                if (r.Height >= r.Width) continue;                        // 竖排，不影响高度
+                if (!r.IntersectsWith(screenRect)) continue;              // 不在本屏
+
+                if (best.IsEmpty || r.Height > best.Height) best = r;
+            }
+            return best;
+        }
+
+        /// <summary>枚举所有任务栏窗口的屏幕矩形（主 + 副屏）。</summary>
+        private static System.Collections.Generic.List<Rectangle> EnumTaskbarRects()
+        {
+            var list = new System.Collections.Generic.List<Rectangle>();
+            try
+            {
+                // 主任务栏：ABM_GETTASKBARPOS = 5
+                var abd = new APPBARDATA();
+                abd.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(APPBARDATA));
+                if (SHAppBarMessage(5u, ref abd) != IntPtr.Zero)
+                {
+                    var r = new Rectangle(abd.rc.Left, abd.rc.Top,
+                                          abd.rc.Right - abd.rc.Left,
+                                          abd.rc.Bottom - abd.rc.Top);
+                    if (r.Width > 0 && r.Height > 0) list.Add(r);
+                }
+            }
+            catch { }
+
+            // 副屏任务栏：枚举 Shell_SecondaryTrayWnd
+            try
+            {
+                IntPtr h = IntPtr.Zero;
+                while (true)
+                {
+                    h = FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null);
+                    if (h == IntPtr.Zero) break;
+
+                    RECT rc;
+                    if (GetWindowRect(h, out rc))
+                    {
+                        var r = new Rectangle(rc.Left, rc.Top,
+                                              rc.Right - rc.Left, rc.Bottom - rc.Top);
+                        if (r.Width > 0 && r.Height > 0) list.Add(r);
+                    }
+                }
+            }
+            catch { }
+
+            return list;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter,
+                                                  string lpszClass, string lpszWindow);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct APPBARDATA
+        {
+            public int cbSize;
+            public IntPtr hWnd;
+            public uint uCallbackMessage;
+            public uint uEdge;
+            public RECT rc;
+            public IntPtr lParam;
+        }
+
+        [System.Runtime.InteropServices.DllImport("shell32.dll")]
+        private static extern IntPtr SHAppBarMessage(uint dwMessage, ref APPBARDATA pData);
 
         private void CaptureBounds96Recursive(Control parent, float s)
         {
@@ -157,29 +353,35 @@ namespace TTG_Tools
             SuspendLayout();
             try
             {
+                // 【必须先关滚动再排布】
+                // 从 175%/200% 副屏拖回主屏时，AutoScroll 仍为 true 且 AutoScrollMinSize
+                // 还是副屏的大值（实测残留 2396x1217）。在这种状态下设 ClientSize，
+                // 滚动条会吃掉客户区宽度/高度（实测 1716x875 → 读回 1714x865），
+                // 导致后续 ContentNeedHeight() (>865) 误判成"装不下"而白开滚动条。
+                // 所以这里先把滚动状态彻底清干净，排布完再交给
+                // FitToWorkAreaAndScroll 统一按真实需求决定是否开启。
+                ResetScrollState();
+
                 ClientSize = new Size(
                     (int)Math.Round(_design96.Width * s),
                     (int)Math.Round(_design96.Height * s));
 
                 ApplyBounds96Recursive(this, s);
 
-                // 关键：设计基线下内容右边界距客户区右沿只有 4px。
-                // 一旦纵向装不下出现**垂直滚动条**，它会吃掉十几像素宽度，
-                // 于是内容瞬间"超宽"→ 连锁冒出**横向滚动条**（175% 实测正是如此）。
-                // 这里主动把客户区宽度撑到「内容宽 + 垂直滚动条 + 余量」，
-                // 让垂直滚动条有独立空间，不再挤占内容。
-                int vRes = (int)Math.Ceiling(SystemInformation.VerticalScrollBarWidth * s);
-                int fitW = ContentNeedWidth() + vRes + 4;
-                if (fitW > ClientSize.Width)
-                {
-                    DpiDiag("  [ApplyDpiToLayout] 加宽客户区 " + ClientSize.Width + " → " + fitW +
-                            "（预留垂直滚动条 " + vRes + "）");
-                    ClientSize = new Size(fitW, ClientSize.Height);
-                }
+                // 这里只按 DPI 排布到「设计自然尺寸」，不处理滚动条。
+                // 滚动条相关的加宽/开关统一由 FitToWorkAreaAndScroll 负责，
+                // 避免两处都改 ClientSize 互相覆盖（实测会导致尺寸振荡）。
             }
             finally
             {
                 ResumeLayout(true);
+
+                // ResumeLayout 会触发 WinForms 重新计算滚动范围，可能把刚清掉的
+                // MinSize/AutoScroll 又按旧值恢复（实测残留 minSize=2396x1217），
+                // 所以排布完成后必须再清一次。是否真的需要滚动，
+                // 统一交给 FitToWorkAreaAndScroll 按真实内容需求决定。
+                ResetScrollState();
+
                 _restoringSize = false;
             }
         }
@@ -532,11 +734,11 @@ namespace TTG_Tools
             int ncH = NcHeight(_lastScale);
             int ncW = NcWidth(_lastScale);
 
-            int topPad = Math.Max(24, ncH) + 6;
-            int bottomPad = Math.Max(24, wa.Height / 12);
+            int topPad = EdgePadTop;
+            int bottomPad = BottomEdgePad(scr, wa);
 
             int maxFormH = wa.Height - topPad - bottomPad;
-            int maxFormW = wa.Width - 8;
+            int maxFormW = wa.Width - EdgePadSide * 2;
 
             int needH = maxFormH - ncH;
             int needW = maxFormW - ncW;
@@ -559,14 +761,14 @@ namespace TTG_Tools
 
                     if (reqW > ClientSize.Width || reqH > ClientSize.Height)
                     {
-                        if (AutoScrollMinSize.Width < reqW || AutoScrollMinSize.Height < reqH)
-                            AutoScrollMinSize = new Size(reqW, reqH);
+                        Size want = new Size(reqW, reqH);
+                        if (AutoScrollMinSize != want)
+                            AutoScrollMinSize = want;
                         AutoScroll = true;
                     }
                     else
                     {
-                        AutoScrollMinSize = System.Drawing.Size.Empty;
-                        AutoScroll = false;
+                        ResetScrollState();
                     }
 
                     DpiDiag("  [drag-shrink] → client=" + ClientSize +
@@ -618,11 +820,13 @@ namespace TTG_Tools
         }
 
         /// <summary>
-        /// 若「内容宽度 + 垂直滚动条预留」超出屏幕可用宽度，就等比降低布局缩放
+        /// 若「内容 + 边框」在该 DPI 下物理上超出屏幕可用区，就等比降低布局缩放
         /// 直到能装下（最多 4 轮收敛，下限 96 DPI）。
         /// <para>
-        /// 这是「消除外层窗体横向滚动条」的核心：设计基线下内容右边界只比客户区
-        /// 窄 4px，纵向一旦出现滚动条，它挤掉的那十几像素就足以连锁触发横向滚动条。
+        /// 这是「消除多余滚动条」的核心：设计基线下内容右边界只比客户区窄 4px，
+        /// 纵向一旦出现滚动条，它挤掉的那十几像素就足以连锁触发横向滚动条。
+        /// 宽度和高度都必须参与判断 —— 只按宽度降级时，200% 屏上高度仍会溢出
+        /// 而白留一条垂直滚动条。
         /// </para>
         /// </summary>
         private int FitDpiToScreenWidth(int dpi, Screen scr)
@@ -639,18 +843,36 @@ namespace TTG_Tools
 
                 float s = useDpi / 96f;
                 int ncW = NcWidth(s);
-                int maxClientW = wa.Width - 8 - ncW;
+                int ncH = NcHeight(s);
 
-                int vRes = (int)Math.Ceiling(SystemInformation.VerticalScrollBarWidth * s);
-                int needW = ContentNeedWidth() + vRes + 4;
+                int maxClientW = wa.Width - EdgePadSide * 2 - ncW;
+                int maxClientH = wa.Height - EdgePadTop - BottomEdgePad(scr, wa) - ncH;
 
-                DpiDiag("  [fitDpi " + i + "] dpi=" + useDpi + " needW=" + needW +
-                        " maxClientW=" + maxClientW + " vRes=" + vRes);
+                // 内容需求只取决于 design96 * 缩放，是定值。
+                int needW = ContentNeedWidth();
+                int needH = ContentNeedHeight();
 
-                if (needW <= maxClientW) break;
+                // 只有**确实**出现垂直滚动条时，才需要给它预留宽度。
+                // 旧代码无条件 `needW += vRes + 4`，会虚增需求、触发不需要的降级
+                // （实测 125% 主屏上空间充裕也可能被误降）。
+                int vRes = 0;
+                if (needH > maxClientH)
+                    vRes = (int)Math.Ceiling(SystemInformation.VerticalScrollBarWidth * s);
 
-                // 需要的缩放系数按比例折算，向下取整后再退 1，确保下一轮一定更小
-                double ratio = (double)maxClientW / needW;
+                DpiDiag("  [fitDpi " + i + "] dpi=" + useDpi +
+                        " needW=" + (needW + vRes) + "/" + maxClientW +
+                        " needH=" + needH + "/" + maxClientH + " vRes=" + vRes);
+
+                if (needW + vRes <= maxClientW && needH <= maxClientH) break;
+
+                // 取宽/高中更吃紧的那个决定缩放系数，向下取整后退 1，
+                // 确保下一轮一定更小（避免因取整原地打转）。
+                double rW = needW + vRes > maxClientW && maxClientW > 0
+                            ? (double)maxClientW / (needW + vRes) : 1.0;
+                double rH = needH > maxClientH && maxClientH > 0
+                            ? (double)maxClientH / needH : 1.0;
+                double ratio = Math.Min(rW, rH);
+
                 int next = (int)Math.Floor(useDpi * ratio);
                 if (next >= useDpi) next = useDpi - 1;
                 if (next < 96) next = 96;
@@ -660,7 +882,7 @@ namespace TTG_Tools
 
             if (useDpi != dpi)
                 DpiDiag("  [fitDpi done] 系统 DPI=" + dpi + " → 实际采用=" + useDpi +
-                        "（屏幕宽度装不下，等比缩小）");
+                        "（屏幕装不下，等比缩小）");
 
             return useDpi;
         }
@@ -709,96 +931,130 @@ namespace TTG_Tools
             _restoringSize = true;
             try
             {
-                // 迭代夹取：设置 ClientSize / AutoScroll 会触发多轮布局，
-                // 滚动条出现又会改变非客户区尺寸，单次夹取不够（实测仍会溢出）。
-                // 这里反复收敛，直到窗口确实落进工作区或达到稳定。
-                int needW = 0, needH = 0;
-                for (int pass = 0; pass < 6; pass++)
+                // ---- 纯计算，不迭代 ----
+                // 旧实现把"开滚动条"和"算窗口尺寸"混在一个循环里，两者互相用对方的
+                // 结果：ClientSize 被滚动条侵占 → 判断"装不下" → 开滚动条 → 继续侵占。
+                // 这是死循环，也是"拖回主屏后滚动条不消失、minSize 卡在副屏大值"的根源。
+                //
+                // 正确做法：内容需求(needW/needH)只取决于 design96 * 当前缩放，
+                // 是个**与滚动条无关的定值**；屏幕可用区也是定值。
+                // 因此先把两者一次算清，再决定窗口尺寸和滚动开关。
+                ResetScrollState();
+
+                int needW = ContentNeedWidth();
+                int needH = ContentNeedHeight();
+
+                float ps = _lastScale;
+                int ncH = NcHeight(ps);
+                int ncW = NcWidth(ps);
+
+                // 可给窗体用的最大客户区。
+                // 顶部只留贴边抓取余量（窗体高度本身已含标题栏，不能再让一遍 ncH）；
+                // 底部按真实任务栏状态计算（rcWork 在任务栏常显时已扣掉任务栏）。
+                int topPad = EdgePadTop;
+                int bottomPad = BottomEdgePad(scr, wa);
+                int sidePad = EdgePadSide;
+
+                int limW = wa.Width - sidePad * 2 - ncW;
+                int limH = wa.Height - topPad - bottomPad - ncH;
+
+                // 目标是「设计自然尺寸」，装不下才压到上限。
+                // 不能用 needW/needH 当目标：那会把窗口收成紧贴内容，
+                // 丢掉设计留白（实测 125% 下会从 875 缩到 865）。
+                int naturalW = (int)Math.Round(_design96.Width * ps);
+                int naturalH = (int)Math.Round(_design96.Height * ps);
+
+                int cw = limW > 0 ? Math.Min(naturalW, limW) : naturalW;
+                int ch = limH > 0 ? Math.Min(naturalH, limH) : naturalH;
+
+                // 需要垂直滚动条时，客户区的可用宽度会少掉 vRes，
+                // 内容就会"瞬间超宽"而连锁冒出横向滚动条（175% 实测正是如此）。
+                // 因此把这块宽度补回客户区，让滚动条有独立空间。
+                if (needH > ch)
                 {
-                    Size before = ClientSize;
-                    Size beforeForm = base.Size;
-
-                    // 每轮都重新测量内容需求：滚动范围必须跟上实际控件尺寸
-                    // （实测只在循环外测一次会导致 minSize 停留在旧值）。
-                    needW = ContentNeedWidth();
-                    needH = ContentNeedHeight();
-
-                    // 内容装不下 → 开滚动
-                    bool needScroll = needW > ClientSize.Width || needH > ClientSize.Height;
-                    if (needScroll)
-                    {
-                        if (AutoScrollMinSize.Width < needW || AutoScrollMinSize.Height < needH)
-                            AutoScrollMinSize = new Size(needW, needH);
-                        if (!AutoScroll) AutoScroll = true;
-                    }
-                    else if (AutoScroll || AutoScrollMinSize != System.Drawing.Size.Empty)
-                    {
-                        // 关闭顺序很重要：必须先清 MinSize 再关 AutoScroll，
-                        // 否则会残留 scroll=True + minSize={0,0} 的矛盾状态（实测）。
-                        AutoScrollMinSize = System.Drawing.Size.Empty;
-                        AutoScroll = false;
-                    }
-
-                    // 重新取非客户区尺寸（滚动条可能改变它）
-                    // 用基线常量而非 base.Width - ClientSize.Width：后者会被
-                    // 操作系统的“窗口不得超过屏幕”钳制污染（实测 200% 算出负数）。
-                    float ps = _lastScale;
-                    int ncH = NcHeight(ps);
-                    int ncW = NcWidth(ps);
-
-                    // 统一在这里算出"可给窗体用的最大尺寸"，不再叠加多处留白。
-                    // 顶部必须让出整条标题栏 + 余量，否则标题栏会贴屏幕边缘点不到。
-                    // 底部要预留一块空间：Windows 的 rcWork 在任务栏"自动隐藏"时
-                    // 仍返回整屏高度（实测报 1440），任务栏弹出会遮住窗口底部。
-                    // 按工作区高度的 1/12 预留（1440 → 120px），足以容纳 200% 缩放的任务栏。
-                    int topPad = Math.Max(24, ncH) + 6;
-                    int bottomPad = Math.Max(24, wa.Height / 12);
-                    int sidePad = 4;
-
-                    int maxFormH = wa.Height - topPad - bottomPad;
-                    int maxFormW = wa.Width - sidePad * 2;
-
-                    Size t = ClientSize;
-                    int limH = maxFormH - ncH;
-                    int limW = maxFormW - ncW;
-                    if (limH > 0 && t.Height > limH) t.Height = limH;
-                    if (limW > 0 && t.Width > limW) t.Width = limW;
-                    if (t != ClientSize)
-                        ClientSize = t;
-
-                    // 位置夹取
-                    int x = Left, y = Top;
-                    if (x + Wide() > wa.Right - sidePad) x = wa.Right - sidePad - Wide();
-                    if (x < wa.Left + sidePad) x = wa.Left + sidePad;
-                    if (y < wa.Top + topPad) y = wa.Top + topPad;
-                    if (y + High() > wa.Bottom - bottomPad) y = wa.Bottom - bottomPad - High();
-                    if (y < wa.Top + topPad) y = wa.Top + topPad;
-                    if (x != Left || y != Top)
-                        Location = new Point(x, y);
-
-                    DpiDiag("  [fit pass " + pass + "] client=" + ClientSize +
-                            " form=" + base.Size + " scroll=" + AutoScroll +
-                            " need=" + needW + "x" + needH +
-                            " topPad=" + topPad + " loc=" + Location);
-
-                    // 已稳定（尺寸没再变化）就停
-                    if (ClientSize == before && base.Size == beforeForm)
-                        break;
-
-                    Application.DoEvents();
+                    int vRes = (int)Math.Ceiling(SystemInformation.VerticalScrollBarWidth * ps);
+                    int want = needW + vRes;
+                    if (limW > 0) want = Math.Min(want, limW);
+                    if (want > cw) cw = want;
                 }
 
-                // 最终硬约束：无论前面收敛如何，确保外框不超过工作区且标题栏可点
-                ForceWindowInside(wa);
+                // 同理，横向滚动条会吃掉高度
+                if (needW > cw)
+                {
+                    int hRes = (int)Math.Ceiling(SystemInformation.HorizontalScrollBarHeight * ps);
+                    int want = needH + hRes;
+                    if (limH > 0) want = Math.Min(want, limH);
+                    if (want > ch) ch = want;
+                }
+
+                Size target = new Size(Math.Max(1, cw), Math.Max(1, ch));
+                if (target != ClientSize)
+                    ClientSize = target;
+
+                // 依据**最终客户区**决定滚动开关（此时已无滚动条侵占）
+                bool needScroll = needW > ClientSize.Width || needH > ClientSize.Height;
+                if (needScroll)
+                {
+                    // 滚动范围必须**完全等于**内容需求，可增可减。
+                    // 旧代码只在新值更大时才赋值 → 从高 DPI 屏拖回后残留巨值
+                    // （实测残留 2396x1217 vs 主屏实际只需 1712x868）。
+                    Size want = new Size(needW, needH);
+                    if (AutoScrollMinSize != want)
+                        AutoScrollMinSize = want;
+                    AutoScroll = true;
+                }
+                else
+                {
+                    ResetScrollState();
+                }
+
+                // 位置夹取
+                int x = Left, y = Top;
+                if (x + Wide() > wa.Right - sidePad) x = wa.Right - sidePad - Wide();
+                if (x < wa.Left + sidePad) x = wa.Left + sidePad;
+                if (y < wa.Top + topPad) y = wa.Top + topPad;
+                if (y + High() > wa.Bottom - bottomPad) y = wa.Bottom - bottomPad - High();
+                if (y < wa.Top + topPad) y = wa.Top + topPad;
+                if (x != Left || y != Top)
+                    Location = new Point(x, y);
+
+                // 最终硬约束：无论前面如何，确保外框不超过工作区且标题栏可点
+                ForceWindowInside(scr, wa);
 
                 DpiDiag("  [fit done] client=" + ClientSize + " form=" + base.Size +
                         " location=" + Location + " scroll=" + AutoScroll +
-                        " minSize=" + AutoScrollMinSize + " WA=" + wa);
+                        " minSize=" + AutoScrollMinSize +
+                        " need=" + needW + "x" + needH +
+                        " lim=" + limW + "x" + limH +
+                        " topPad=" + topPad + " botPad=" + bottomPad + " WA=" + wa);
             }
             finally
             {
                 _restoringSize = false;
             }
+        }
+
+        /// <summary>
+        /// 彻底清除滚动状态（滚动范围 + 滚动开关 + 滚动偏移）。
+        /// <para>
+        /// 三个成员必须一起复位，否则会留下矛盾状态：
+        /// · `AutoScrollMinSize` —— 旧代码只增不减，跨屏往返后残留副屏的大值；
+        /// · `AutoScroll` —— 开关；
+        /// · `AutoScrollPosition` —— 用户滚过之后 WinForms 会保留偏移，
+        ///   关掉滚动也不归零，表现为"无滚动条但内容整体下移"。
+        ///   注意必须先设 `AutoScroll = false` 才能把偏移清零。
+        /// </para>
+        /// </summary>
+        private void ResetScrollState()
+        {
+            // 顺序：先清 MinSize，再关 AutoScroll，最后复位偏移
+            if (AutoScrollMinSize != System.Drawing.Size.Empty)
+                AutoScrollMinSize = System.Drawing.Size.Empty;
+
+            if (AutoScroll) AutoScroll = false;
+
+            if (AutoScrollPosition != System.Drawing.Point.Empty)
+                AutoScrollPosition = System.Drawing.Point.Empty;
         }
 
         /// <summary>当前窗体外框宽度（Designer 里 Width 字段遮蔽了 Control.Width）。</summary>
@@ -822,7 +1078,7 @@ namespace TTG_Tools
         /// "只能点标题栏中间"）。因此固定留出 非客户区上沿高度 + 余量 的空白。
         /// </para>
         /// </summary>
-        private void ForceWindowInside(Rectangle wa)
+        private void ForceWindowInside(Screen scr, Rectangle wa)
         {
             if (Handle == IntPtr.Zero) return;
             if (wa.Width <= 0 || wa.Height <= 0) return;
@@ -831,12 +1087,14 @@ namespace TTG_Tools
             int ncH = NcHeight(_lastScale);
             int ncW = NcWidth(_lastScale);
 
-            // 顶部留白：至少容下整条标题栏，再多给几像素余量，确保可点击。
-            int topPad = Math.Max(24, ncH) + 6;
-            // 底部留白：任务栏"自动隐藏"时 rcWork 仍报整屏高度，需要预留弹出空间。
-            int bottomPad = Math.Max(24, wa.Height / 12);
-            int leftPad = 4;
-            int rightPad = 4;
+            // 顶部留白：只需几像素抓取余量。窗体高度已包含标题栏，
+            // 不能再让一遍 ncH，否则等于把标题栏算两次（实测多浪费 81px）。
+            int topPad = EdgePadTop;
+            // 底部留白：仅在任务栏「自动隐藏」且停在本屏时预留其高度，
+            // 常显任务栏已被 rcWork 扣掉，任务栏在别的屏则完全不用留。
+            int bottomPad = BottomEdgePad(scr, wa);
+            int leftPad = EdgePadSide;
+            int rightPad = EdgePadSide;
 
             // 尺寸上限：高度扣掉上下留白，宽度扣掉左右留白。
             int maxW = wa.Width - leftPad - rightPad;
