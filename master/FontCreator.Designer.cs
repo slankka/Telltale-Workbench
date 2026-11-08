@@ -346,7 +346,7 @@ namespace TTG_Tools
             this.dataGridViewWithTextures.Name = "dataGridViewWithTextures";
             this.dataGridViewWithTextures.ReadOnly = true;
             this.dataGridViewWithTextures.RowHeadersWidth = 51;
-            this.dataGridViewWithTextures.Size = new System.Drawing.Size(629, 190);
+            this.dataGridViewWithTextures.Size = new System.Drawing.Size(620, 190);
             this.dataGridViewWithTextures.TabIndex = 26;
             this.dataGridViewWithTextures.CellMouseClick += new System.Windows.Forms.DataGridViewCellMouseEventHandler(this.dataGridViewWithTextures_CellMouseClick);
             this.dataGridViewWithTextures.RowContextMenuStripNeeded += new System.Windows.Forms.DataGridViewRowContextMenuStripNeededEventHandler(this.dataGridViewWithTextures_RowContextMenuStripNeeded);
@@ -458,7 +458,7 @@ namespace TTG_Tools
             this.dataGridViewWithCoord.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.dataGridViewWithCoord.Name = "dataGridViewWithCoord";
             this.dataGridViewWithCoord.RowHeadersWidth = 51;
-            this.dataGridViewWithCoord.Size = new System.Drawing.Size(1147, 220);
+            this.dataGridViewWithCoord.Size = new System.Drawing.Size(990, 220);
             this.dataGridViewWithCoord.TabIndex = 27;
             this.dataGridViewWithCoord.CellBeginEdit += new System.Windows.Forms.DataGridViewCellCancelEventHandler(this.dataGridViewWithCoord_CellBeginEdit);
             this.dataGridViewWithCoord.CellEndEdit += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridViewWithCoord_CellEndEdit);
@@ -468,7 +468,7 @@ namespace TTG_Tools
             // Column1
             // 
             this.Column1.HeaderText = "№";
-            this.Column1.MinimumWidth = 6;
+            this.Column1.MinimumWidth = 4;
             this.Column1.Name = "Column1";
             this.Column1.ReadOnly = true;
             // 
@@ -676,7 +676,7 @@ namespace TTG_Tools
             this.groupBox4.Controls.Add(this.rbNoSwizzle);
             this.groupBox4.Location = new System.Drawing.Point(222, 645);
             this.groupBox4.Name = "groupBox4";
-            this.groupBox4.Size = new System.Drawing.Size(629, 50);
+            this.groupBox4.Size = new System.Drawing.Size(990, 50);
             this.groupBox4.TabIndex = 30;
             this.groupBox4.TabStop = false;
             this.groupBox4.Text = "Swizzle methods (Save)";
@@ -758,7 +758,7 @@ namespace TTG_Tools
             this.panelTexturePreview.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.panelTexturePreview.Location = new System.Drawing.Point(857, 274);
             this.panelTexturePreview.Name = "panelTexturePreview";
-            this.panelTexturePreview.Size = new System.Drawing.Size(512, 392);
+            this.panelTexturePreview.Size = new System.Drawing.Size(355, 392);
             this.panelTexturePreview.TabIndex = 31;
             // 
             // pictureBoxTexturePreview
@@ -766,7 +766,7 @@ namespace TTG_Tools
             this.pictureBoxTexturePreview.BackColor = System.Drawing.Color.Black;
             this.pictureBoxTexturePreview.Location = new System.Drawing.Point(0, 0);
             this.pictureBoxTexturePreview.Name = "pictureBoxTexturePreview";
-            this.pictureBoxTexturePreview.Size = new System.Drawing.Size(512, 392);
+            this.pictureBoxTexturePreview.Size = new System.Drawing.Size(355, 392);
             this.pictureBoxTexturePreview.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
             this.pictureBoxTexturePreview.TabIndex = 0;
             this.pictureBoxTexturePreview.TabStop = false;
@@ -785,7 +785,7 @@ namespace TTG_Tools
             // 
             // btnZoomOut
             // 
-            this.btnZoomOut.Location = new System.Drawing.Point(1321, 250);
+            this.btnZoomOut.Location = new System.Drawing.Point(1166, 250);
             this.btnZoomOut.Name = "btnZoomOut";
             this.btnZoomOut.Size = new System.Drawing.Size(22, 22);
             this.btnZoomOut.TabIndex = 32;
@@ -795,7 +795,7 @@ namespace TTG_Tools
             // 
             // btnZoomIn
             // 
-            this.btnZoomIn.Location = new System.Drawing.Point(1347, 250);
+            this.btnZoomIn.Location = new System.Drawing.Point(1190, 250);
             this.btnZoomIn.Name = "btnZoomIn";
             this.btnZoomIn.Size = new System.Drawing.Size(22, 22);
             this.btnZoomIn.TabIndex = 33;
@@ -1214,7 +1214,7 @@ namespace TTG_Tools
             this.textBoxLogOutput.Name = "textBoxLogOutput";
             this.textBoxLogOutput.ReadOnly = true;
             this.textBoxLogOutput.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.textBoxLogOutput.Size = new System.Drawing.Size(629, 145);
+            this.textBoxLogOutput.Size = new System.Drawing.Size(990, 145);
             this.textBoxLogOutput.TabIndex = 34;
             // 
             // buttonSaveLogAs
@@ -1231,7 +1231,7 @@ namespace TTG_Tools
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(1373, 700);
+            this.ClientSize = new System.Drawing.Size(1216, 700);
             this.Controls.Add(this.textBoxLogOutput);
             this.Controls.Add(this.buttonSaveLogAs);
             this.Controls.Add(this.groupBoxMatchTextures);
