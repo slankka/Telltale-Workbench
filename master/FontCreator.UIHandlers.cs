@@ -332,43 +332,61 @@ namespace TTG_Tools
             // （实测增量方式会把控件放大到 1.25×1.75=2.19 倍，窗口只有 1.75 倍）。
             ApplyDpiToLayout(dpi);
 
+            FitToWorkAreaAndScroll(scr);
+        }
+
+        /// <summary>
+        /// 把窗口收进指定屏幕工作区，并在内容超出时启用滚动。
+        /// <para>
+        /// 高缩放（如 200%）下内容可能比屏幕还大（实测 200% 需要 2738x1390，
+        /// 而 2560x1440 屏可用约 2550x1323）。此时无法"完整显示"，
+        /// 唯一正确的做法是：窗口压到工作区内 + 滚动条，保证所有内容仍可访问。
+        /// </para>
+        /// </summary>
+        private void FitToWorkAreaAndScroll(Screen scr)
+        {
+            if (scr == null) return;
+
+            Rectangle wa = scr.WorkingArea;
+            int ncH = base.Height - ClientSize.Height;
+            int ncW = base.Width - ClientSize.Width;
+
+            int maxClientH = wa.Height - ncH;
+            int maxClientW = wa.Width - ncW;
+
             _restoringSize = true;
             try
             {
-                // 装不下工作区时按工作区收缩（客户区会被压缩，控件靠滚动访问）
-                Rectangle wa = scr.WorkingArea;
-                int ncH = base.Height - ClientSize.Height;
-                int ncW = base.Width - ClientSize.Width;
-
-                int maxClientH = wa.Height - ncH;
-                int maxClientW = wa.Width - ncW;
-
                 Size target = ClientSize;
                 if (maxClientH > 0 && target.Height > maxClientH) target.Height = maxClientH;
                 if (maxClientW > 0 && target.Width > maxClientW) target.Width = maxClientW;
 
                 if (target != ClientSize)
-                {
                     ClientSize = target;
 
-                    // 客户区被压缩时提供滚动，保证底部/右侧内容仍可访问
-                    int needW = 0, needH = 0;
-                    foreach (Control c in Controls)
-                    {
-                        if (!c.Visible || c is MenuStrip) continue;
-                        if (c.Right > needW) needW = c.Right;
-                        if (c.Bottom > needH) needH = c.Bottom;
-                    }
-                    if (needW > ClientSize.Width || needH > ClientSize.Height)
-                    {
-                        AutoScroll = true;
-                        AutoScrollMinSize = new Size(needW, needH);
-                    }
-                    else
-                    {
-                        AutoScroll = false;
-                        AutoScrollMinSize = System.Drawing.Size.Empty;
-                    }
+                // 按控件实际占用决定是否需要滚动
+                int needW = 0, needH = 0;
+                foreach (Control c in Controls)
+                {
+                    if (!c.Visible || c is MenuStrip) continue;
+                    if (c.Right > needW) needW = c.Right;
+                    if (c.Bottom > needH) needH = c.Bottom;
+                }
+
+                if (needW > ClientSize.Width || needH > ClientSize.Height)
+                {
+                    AutoScroll = true;
+                    AutoScrollMinSize = new Size(needW, needH);
+
+                    // 启用滚动后 WinForms 会为滚动条预留空间，窗体可能因此变大。
+                    // 这里再夹一次，确保最终窗口确实落在工作区内。
+                    int ncH2 = base.Height - ClientSize.Height;
+                    int ncW2 = base.Width - ClientSize.Width;
+                    Size t2 = ClientSize;
+                    if (wa.Height - ncH2 > 0 && t2.Height > wa.Height - ncH2) t2.Height = wa.Height - ncH2;
+                    if (wa.Width - ncW2 > 0 && t2.Width > wa.Width - ncW2) t2.Width = wa.Width - ncW2;
+                    if (t2 != ClientSize)
+                        ClientSize = t2;
                 }
                 else
                 {
@@ -385,20 +403,9 @@ namespace TTG_Tools
                 if (x != Left || y != Top)
                     Location = new Point(x, y);
 
-                DpiDiag("  [apply] done: ClientSize=" + ClientSize +
-                        " Location=" + Location + " WA=" + wa + " scroll=" + AutoScroll);
-
-                // 诊断：确认控件是否与窗口匹配
-                try
-                {
-                    var dgv = Controls["dataGridViewWithCoord"];
-                    var pan = Controls["panelTexturePreview"];
-                    DpiDiag("  [apply] ctrl: dgv=" + (dgv != null ? dgv.Bounds.ToString() : "?") +
-                            " dgvRight=" + (dgv != null ? dgv.Right.ToString() : "?") +
-                            " panelRight=" + (pan != null ? pan.Right.ToString() : "?") +
-                            " clientW=" + ClientSize.Width);
-                }
-                catch { }
+                DpiDiag("  [fit] ClientSize=" + ClientSize + " Form=" + Size +
+                        " need=" + needW + "x" + needH +
+                        " scroll=" + AutoScroll + " WA=" + wa);
             }
             finally
             {
