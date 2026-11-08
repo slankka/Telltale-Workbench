@@ -341,12 +341,12 @@ namespace TTG_Tools
             this.Width,
             this.Size});
             this.dataGridViewWithTextures.ContextMenuStrip = this.contextMenuStripExport_Import;
-            this.dataGridViewWithTextures.Location = new System.Drawing.Point(222, 338);
+            this.dataGridViewWithTextures.Location = new System.Drawing.Point(222, 256);
             this.dataGridViewWithTextures.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.dataGridViewWithTextures.Name = "dataGridViewWithTextures";
             this.dataGridViewWithTextures.ReadOnly = true;
             this.dataGridViewWithTextures.RowHeadersWidth = 51;
-            this.dataGridViewWithTextures.Size = new System.Drawing.Size(629, 246);
+            this.dataGridViewWithTextures.Size = new System.Drawing.Size(629, 190);
             this.dataGridViewWithTextures.TabIndex = 26;
             this.dataGridViewWithTextures.CellMouseClick += new System.Windows.Forms.DataGridViewCellMouseEventHandler(this.dataGridViewWithTextures_CellMouseClick);
             this.dataGridViewWithTextures.RowContextMenuStripNeeded += new System.Windows.Forms.DataGridViewRowContextMenuStripNeededEventHandler(this.dataGridViewWithTextures_RowContextMenuStripNeeded);
@@ -427,8 +427,8 @@ namespace TTG_Tools
             // 
             this.dataGridViewWithCoord.AllowUserToAddRows = false;
             this.dataGridViewWithCoord.AllowUserToDeleteRows = false;
-            this.dataGridViewWithCoord.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
+            this.dataGridViewWithCoord.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
+            | System.Windows.Forms.AnchorStyles.Left)
             | System.Windows.Forms.AnchorStyles.Right)));
             this.dataGridViewWithCoord.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.Fill;
             dataGridViewCellStyle2.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleCenter;
@@ -458,7 +458,7 @@ namespace TTG_Tools
             this.dataGridViewWithCoord.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
             this.dataGridViewWithCoord.Name = "dataGridViewWithCoord";
             this.dataGridViewWithCoord.RowHeadersWidth = 51;
-            this.dataGridViewWithCoord.Size = new System.Drawing.Size(1147, 282);
+            this.dataGridViewWithCoord.Size = new System.Drawing.Size(1147, 220);
             this.dataGridViewWithCoord.TabIndex = 27;
             this.dataGridViewWithCoord.CellBeginEdit += new System.Windows.Forms.DataGridViewCellCancelEventHandler(this.dataGridViewWithCoord_CellBeginEdit);
             this.dataGridViewWithCoord.CellEndEdit += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridViewWithCoord_CellEndEdit);
@@ -674,19 +674,19 @@ namespace TTG_Tools
             this.groupBox4.Controls.Add(this.rbPSVitaSwizzle);
             this.groupBox4.Controls.Add(this.rbWiiSwizzle);
             this.groupBox4.Controls.Add(this.rbNoSwizzle);
-            this.groupBox4.Location = new System.Drawing.Point(7, 706);
+            this.groupBox4.Location = new System.Drawing.Point(222, 645);
             this.groupBox4.Name = "groupBox4";
-            this.groupBox4.Size = new System.Drawing.Size(186, 153);
+            this.groupBox4.Size = new System.Drawing.Size(629, 50);
             this.groupBox4.TabIndex = 30;
             this.groupBox4.TabStop = false;
             this.groupBox4.Text = "Swizzle methods (Save)";
             // 
             // rbSwitchSwizzle
             // 
-            this.rbSwitchSwizzle.AutoSize = true;
-            this.rbSwitchSwizzle.Location = new System.Drawing.Point(7, 59);
+            this.rbSwitchSwizzle.AutoSize = false;
+            this.rbSwitchSwizzle.Location = new System.Drawing.Point(148, 17);
             this.rbSwitchSwizzle.Name = "rbSwitchSwizzle";
-            this.rbSwitchSwizzle.Size = new System.Drawing.Size(102, 17);
+            this.rbSwitchSwizzle.Size = new System.Drawing.Size(130, 20);
             this.rbSwitchSwizzle.TabIndex = 2;
             this.rbSwitchSwizzle.TabStop = true;
             this.rbSwitchSwizzle.Text = "Nintendo Switch";
@@ -695,10 +695,10 @@ namespace TTG_Tools
             // 
             // rbPS4Swizzle
             // 
-            this.rbPS4Swizzle.AutoSize = true;
-            this.rbPS4Swizzle.Location = new System.Drawing.Point(7, 36);
+            this.rbPS4Swizzle.AutoSize = false;
+            this.rbPS4Swizzle.Location = new System.Drawing.Point(80, 17);
             this.rbPS4Swizzle.Name = "rbPS4Swizzle";
-            this.rbPS4Swizzle.Size = new System.Drawing.Size(43, 17);
+            this.rbPS4Swizzle.Size = new System.Drawing.Size(60, 20);
             this.rbPS4Swizzle.TabIndex = 1;
             this.rbPS4Swizzle.TabStop = true;
             this.rbPS4Swizzle.Text = "PS4";
@@ -707,10 +707,10 @@ namespace TTG_Tools
             // 
             // rbXbox360Swizzle
             // 
-            this.rbXbox360Swizzle.AutoSize = true;
-            this.rbXbox360Swizzle.Location = new System.Drawing.Point(7, 82);
+            this.rbXbox360Swizzle.AutoSize = false;
+            this.rbXbox360Swizzle.Location = new System.Drawing.Point(286, 17);
             this.rbXbox360Swizzle.Name = "rbXbox360Swizzle";
-            this.rbXbox360Swizzle.Size = new System.Drawing.Size(70, 17);
+            this.rbXbox360Swizzle.Size = new System.Drawing.Size(96, 20);
             this.rbXbox360Swizzle.TabIndex = 3;
             this.rbXbox360Swizzle.TabStop = true;
             this.rbXbox360Swizzle.Text = "Xbox 360";
@@ -719,10 +719,10 @@ namespace TTG_Tools
             // 
             // rbPSVitaSwizzle
             // 
-            this.rbPSVitaSwizzle.AutoSize = true;
-            this.rbPSVitaSwizzle.Location = new System.Drawing.Point(7, 103);
+            this.rbPSVitaSwizzle.AutoSize = false;
+            this.rbPSVitaSwizzle.Location = new System.Drawing.Point(390, 17);
             this.rbPSVitaSwizzle.Name = "rbPSVitaSwizzle";
-            this.rbPSVitaSwizzle.Size = new System.Drawing.Size(58, 17);
+            this.rbPSVitaSwizzle.Size = new System.Drawing.Size(82, 20);
             this.rbPSVitaSwizzle.TabIndex = 4;
             this.rbPSVitaSwizzle.TabStop = true;
             this.rbPSVitaSwizzle.Text = "PS Vita";
@@ -731,10 +731,10 @@ namespace TTG_Tools
             // 
             // rbWiiSwizzle
             // 
-            this.rbWiiSwizzle.AutoSize = true;
-            this.rbWiiSwizzle.Location = new System.Drawing.Point(7, 126);
+            this.rbWiiSwizzle.AutoSize = false;
+            this.rbWiiSwizzle.Location = new System.Drawing.Point(480, 17);
             this.rbWiiSwizzle.Name = "rbWiiSwizzle";
-            this.rbWiiSwizzle.Size = new System.Drawing.Size(85, 17);
+            this.rbWiiSwizzle.Size = new System.Drawing.Size(110, 20);
             this.rbWiiSwizzle.TabIndex = 5;
             this.rbWiiSwizzle.TabStop = true;
             this.rbWiiSwizzle.Text = "Nintendo Wii";
@@ -743,10 +743,10 @@ namespace TTG_Tools
             // 
             // rbNoSwizzle
             // 
-            this.rbNoSwizzle.AutoSize = true;
-            this.rbNoSwizzle.Location = new System.Drawing.Point(7, 18);
+            this.rbNoSwizzle.AutoSize = false;
+            this.rbNoSwizzle.Location = new System.Drawing.Point(8, 17);
             this.rbNoSwizzle.Name = "rbNoSwizzle";
-            this.rbNoSwizzle.Size = new System.Drawing.Size(50, 17);
+            this.rbNoSwizzle.Size = new System.Drawing.Size(64, 20);
             this.rbNoSwizzle.TabIndex = 0;
             this.rbNoSwizzle.TabStop = true;
             this.rbNoSwizzle.Text = "None";
@@ -756,9 +756,9 @@ namespace TTG_Tools
             // panelTexturePreview (viewport for panning)
             // 
             this.panelTexturePreview.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.panelTexturePreview.Location = new System.Drawing.Point(857, 347);
+            this.panelTexturePreview.Location = new System.Drawing.Point(857, 274);
             this.panelTexturePreview.Name = "panelTexturePreview";
-            this.panelTexturePreview.Size = new System.Drawing.Size(512, 512);
+            this.panelTexturePreview.Size = new System.Drawing.Size(512, 392);
             this.panelTexturePreview.TabIndex = 31;
             // 
             // pictureBoxTexturePreview
@@ -766,7 +766,7 @@ namespace TTG_Tools
             this.pictureBoxTexturePreview.BackColor = System.Drawing.Color.Black;
             this.pictureBoxTexturePreview.Location = new System.Drawing.Point(0, 0);
             this.pictureBoxTexturePreview.Name = "pictureBoxTexturePreview";
-            this.pictureBoxTexturePreview.Size = new System.Drawing.Size(512, 512);
+            this.pictureBoxTexturePreview.Size = new System.Drawing.Size(512, 392);
             this.pictureBoxTexturePreview.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
             this.pictureBoxTexturePreview.TabIndex = 0;
             this.pictureBoxTexturePreview.TabStop = false;
@@ -777,7 +777,7 @@ namespace TTG_Tools
             // labelTexturePreview
             // 
             this.labelTexturePreview.AutoSize = true;
-            this.labelTexturePreview.Location = new System.Drawing.Point(854, 328);
+            this.labelTexturePreview.Location = new System.Drawing.Point(854, 255);
             this.labelTexturePreview.Name = "labelTexturePreview";
             this.labelTexturePreview.Size = new System.Drawing.Size(143, 13);
             this.labelTexturePreview.TabIndex = 32;
@@ -785,7 +785,7 @@ namespace TTG_Tools
             // 
             // btnZoomOut
             // 
-            this.btnZoomOut.Location = new System.Drawing.Point(1000, 323);
+            this.btnZoomOut.Location = new System.Drawing.Point(1321, 250);
             this.btnZoomOut.Name = "btnZoomOut";
             this.btnZoomOut.Size = new System.Drawing.Size(22, 22);
             this.btnZoomOut.TabIndex = 32;
@@ -795,7 +795,7 @@ namespace TTG_Tools
             // 
             // btnZoomIn
             // 
-            this.btnZoomIn.Location = new System.Drawing.Point(1024, 323);
+            this.btnZoomIn.Location = new System.Drawing.Point(1347, 250);
             this.btnZoomIn.Name = "btnZoomIn";
             this.btnZoomIn.Size = new System.Drawing.Size(22, 22);
             this.btnZoomIn.TabIndex = 33;
@@ -1209,17 +1209,17 @@ namespace TTG_Tools
             // 
             // textBoxLogOutput
             // 
-            this.textBoxLogOutput.Location = new System.Drawing.Point(222, 590);
+            this.textBoxLogOutput.Location = new System.Drawing.Point(222, 452);
             this.textBoxLogOutput.Multiline = true;
             this.textBoxLogOutput.Name = "textBoxLogOutput";
             this.textBoxLogOutput.ReadOnly = true;
             this.textBoxLogOutput.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.textBoxLogOutput.Size = new System.Drawing.Size(629, 269);
+            this.textBoxLogOutput.Size = new System.Drawing.Size(629, 145);
             this.textBoxLogOutput.TabIndex = 34;
             // 
             // buttonSaveLogAs
             // 
-            this.buttonSaveLogAs.Location = new System.Drawing.Point(222, 860);
+            this.buttonSaveLogAs.Location = new System.Drawing.Point(222, 603);
             this.buttonSaveLogAs.Name = "buttonSaveLogAs";
             this.buttonSaveLogAs.Size = new System.Drawing.Size(90, 27);
             this.buttonSaveLogAs.TabIndex = 35;
@@ -1229,9 +1229,9 @@ namespace TTG_Tools
             // 
             // FontCreator
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1373, 887);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            this.ClientSize = new System.Drawing.Size(1373, 700);
             this.Controls.Add(this.textBoxLogOutput);
             this.Controls.Add(this.buttonSaveLogAs);
             this.Controls.Add(this.groupBoxMatchTextures);
@@ -1257,6 +1257,7 @@ namespace TTG_Tools
             this.Text = "TTG Font Creator";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.FontCreator_FormClosing);
             this.Load += new System.EventHandler(this.FontCreator_Load);
+            this.DpiChanged += new System.Windows.Forms.DpiChangedEventHandler(this.FontCreator_DpiChanged);
             this.menuStrip1.ResumeLayout(false);
             this.menuStrip1.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridViewWithTextures)).EndInit();

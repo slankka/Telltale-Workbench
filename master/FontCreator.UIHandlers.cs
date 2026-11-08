@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -36,6 +37,403 @@ namespace TTG_Tools
             // Load font profiles
             FontProfileList profiles = FontProfileList.Load();
             RefreshProfileComboBox(profiles, null);
+
+            // 固定尺寸窗体：清除 Anchor（避免尺寸变化时控件被拉伸）
+            FontCreator_Load_InitLayout();
+        }
+
+        // ======== 高 DPI ========
+        // 设计尺寸已按 175% 屏（逻辑 1463x775）可用空间定制：
+        //   ClientSize = 1373 x 730，缩放后 = 2403 x 1278，加边框 1339，
+        //   可放进 1356 的 175% 屏工作区；125%/100% 下更宽裕。
+        //
+        // 因此**运行时不再做任何布局调整**，控件几何完全由 WinForms 原生 DPI 缩放决定。
+        // 之前所有"改 ClientSize / 改控件坐标 / 开关 AutoScroll"的运行时方案都会与
+        // 原生缩放或锚定规则冲突，导致 Swizzle 错位、内容被裁、无滚动条等问题。
+
+        private void FontCreator_Load_InitLayout()
+        {
+            // 固定尺寸窗体：Anchor 无意义且会在尺寸变化时拉伸控件，统一清除
+            ClearAnchorsRecursive(this);
+
+            int devDpi = SafeDpi();          // 会话缓存的系统 DPI（登录时确定，可能过期）
+            int monDpi = MonitorDpi();       // 显示器实时 DPI（来自 PerMonitorSettings）
+            if (devDpi <= 0) devDpi = 96;
+            if (monDpi <= 0) monDpi = 96;
+
+            // 控件此刻被 WinForms 按**会话 DPI(devDpi)** 缩放，因此除以 devDpi
+            // 就得到真正的 96 DPI 设计基线。
+            CaptureDesign96(devDpi);
+
+            // 会话 DPI 与显示器实际 DPI 分叉（改了缩放但未重新登录）时，
+            // 按显示器真实 DPI 重排一次，让控件与窗口都回到正确比例。
+            if (devDpi != monDpi)
+            {
+                DpiDiag("[MISMATCH] devDpi=" + devDpi + " monitorDpi=" + monDpi +
+                        " ClientSize=" + ClientSize + " design96=" + _design96);
+                ApplyDpiToLayout(monDpi);
+                DpiDiag("[MISMATCH] corrected ClientSize=" + ClientSize);
+            }
+
+            DpiDiag("Load: ClientSize=" + ClientSize + " devDpi=" + devDpi +
+                    " monitorDpi=" + monDpi + " design96=" + _design96 +
+                    " screen=" + SafeScreenInfo());
+        }
+
+        /// <summary>
+        /// 记录"96 DPI 下的设计与控件基线"。
+        /// <para>
+        /// 这是整个 DPI 处理的**唯一真相来源**：
+        /// WinForms 的增量缩放会把自己上一次的结果再乘一次（实测拖到 175% 屏时
+        /// 控件被放大到 1.25×1.75=2.19 倍，而窗口只有 1.75 倍 → 右侧被裁）。
+        /// 因此改为：每次 DPI 变化都从这份基线**重新计算**绝对坐标，
+        /// 彻底摆脱增量累积。
+        /// </para>
+        /// </summary>
+        private void CaptureDesign96(int dpi)
+        {
+            if (dpi <= 0) dpi = 96;
+            float s = dpi / 96f;
+
+            _design96 = new Size(
+                (int)Math.Round(ClientSize.Width / s),
+                (int)Math.Round(ClientSize.Height / s));
+
+            _designBounds96 = new System.Collections.Generic.Dictionary<Control, Rectangle>();
+            CaptureBounds96Recursive(this, s);
+        }
+
+        private void CaptureBounds96Recursive(Control parent, float s)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                _designBounds96[c] = new Rectangle(
+                    (int)Math.Round(c.Left / s),
+                    (int)Math.Round(c.Top / s),
+                    (int)Math.Round(c.Width / s),
+                    (int)Math.Round(c.Height / s));
+
+                if (c.HasChildren) CaptureBounds96Recursive(c, s);
+            }
+        }
+
+        /// <summary>
+        /// 按给定 DPI 把窗口与**全部控件**重新排布到绝对坐标。
+        /// 每次都从 _design96 / _designBounds96 现算，不依赖任何增量缩放。
+        /// </summary>
+        private void ApplyDpiToLayout(int dpi)
+        {
+            if (dpi <= 0) dpi = 96;
+            if (_design96.IsEmpty || _designBounds96 == null) return;
+
+            float s = dpi / 96f;
+
+            _restoringSize = true;
+            SuspendLayout();
+            try
+            {
+                ClientSize = new Size(
+                    (int)Math.Round(_design96.Width * s),
+                    (int)Math.Round(_design96.Height * s));
+
+                ApplyBounds96Recursive(this, s);
+            }
+            finally
+            {
+                ResumeLayout(true);
+                _restoringSize = false;
+            }
+        }
+
+        private void ApplyBounds96Recursive(Control parent, float s)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                Rectangle b;
+                if (_designBounds96.TryGetValue(c, out b))
+                {
+                    c.Bounds = new Rectangle(
+                        (int)Math.Round(b.X * s),
+                        (int)Math.Round(b.Y * s),
+                        (int)Math.Round(b.Width * s),
+                        (int)Math.Round(b.Height * s));
+                }
+
+                if (c.HasChildren) ApplyBounds96Recursive(c, s);
+            }
+        }
+
+        /// <summary>96 DPI 下的等效设计客户区尺寸（所有 DPI 的统一换算基准）。</summary>
+        private Size _design96;
+
+        /// <summary>96 DPI 下的控件基线坐标（每次 DPI 变化都从这里重算，避免增量累积）。</summary>
+        private System.Collections.Generic.Dictionary<Control, Rectangle> _designBounds96;
+
+        private bool _restoringSize;
+
+        // ---- Win32: 查询"窗口所在显示器"的真实 DPI ----
+        // 参考 winsiderss/systeminformer#1386（同类问题的行业级案例）：
+        //   · 该 issue 确认「跨屏后内容 DPI 变了，但窗口尺寸不会自动跟着变」是
+        //     Windows 的既定行为，应用必须自己按 newDpi/oldDpi 调整窗口尺寸。
+        //   · 也确认 GetDpiForSystem / GetDpiForMonitor / GetShellWindow 在某些
+        //     情况下会「缓存旧值直到重启」——这正是本项目实测到的 DeviceDpi=120 脏值。
+        // 因此这里用两个独立来源交叉校验，取二者中"看起来更可信"的值。
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct POINT { public int X; public int Y; }
+
+        [System.Runtime.InteropServices.DllImport("shcore.dll")]
+        private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+        // GetScaleFactorForMonitor 返回"人类可读百分比"(100/125/150/175)，
+        // 与 GetDpiForMonitor 的 DPI 值(96/120/144/168) 是两套单位，可互为校验。
+        [System.Runtime.InteropServices.DllImport("shcore.dll")]
+        private static extern int GetScaleFactorForMonitor(IntPtr hmonitor, out int scale);
+
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+        private const int MDT_EFFECTIVE_DPI = 0;
+
+        /// <summary>取"本窗体所在显示器"的监视器句柄。Handle 未就绪时用屏幕位置查。</summary>
+        private IntPtr CurrentMonitor()
+        {
+            try
+            {
+                if (Handle != IntPtr.Zero)
+                {
+                    IntPtr h = MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
+                    if (h != IntPtr.Zero) return h;
+                }
+            }
+            catch { }
+
+            try
+            {
+                // Load 阶段 Handle 可能还没建好，改用"窗体中心点"所属显示器。
+                // 这对启动时定位（CenterScreen / 上次位置）已经足够准确。
+                Rectangle b = Bounds;
+                var pt = new POINT
+                {
+                    X = b.Left + Math.Max(1, b.Width / 2),
+                    Y = b.Top + Math.Max(1, b.Height / 2)
+                };
+                return MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+            }
+            catch { }
+
+            return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// 窗口所在显示器的真实 DPI。
+        /// 优先 GetDpiForMonitor，并用 GetScaleFactorForMonitor 交叉校验：
+        /// 若两者换算后不一致（说明其中一个返回了缓存旧值），取"与显示器实时状态更接近"的。
+        /// </summary>
+        private int MonitorDpi()
+        {
+            try
+            {
+                IntPtr hmon = CurrentMonitor();
+                if (hmon == IntPtr.Zero) return 96;
+
+                uint dx = 0, dy = 0;
+                int hrDpi = GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, out dx, out dy);
+                int dpiFromDpi = (hrDpi == 0 && dx > 0) ? (int)dx : 0;
+
+                int scale = 0;
+                int hrScale = GetScaleFactorForMonitor(hmon, out scale);
+                int dpiFromScale = (hrScale == 0 && scale > 0) ? (int)Math.Round(scale * 96.0 / 100.0) : 0;
+
+                if (dpiFromDpi > 0 && dpiFromScale > 0 && dpiFromDpi != dpiFromScale)
+                {
+                    // 两者不一致：优先采用与「窗口当前实际尺寸」吻合的那个，
+                    // 因为 WinForms 就是按真实 DPI 缩放窗体的。
+                    int dpiFromSize = DpiImpliedByWindowSize();
+                    int pick = (dpiFromSize > 0 &&
+                                Math.Abs(dpiFromSize - dpiFromScale) < Math.Abs(dpiFromSize - dpiFromDpi))
+                               ? dpiFromScale : dpiFromDpi;
+                    DpiDiag("[MonitorDpi] 不一致: GetDpiForMonitor=" + dpiFromDpi +
+                            " GetScaleFactorForMonitor=" + dpiFromScale +
+                            " 由窗口尺寸推断=" + dpiFromSize + " → 采用 " + pick);
+                    return pick;
+                }
+
+                if (dpiFromDpi > 0) return dpiFromDpi;
+                if (dpiFromScale > 0) return dpiFromScale;
+            }
+            catch { }
+
+            return 96;
+        }
+
+        /// <summary>
+        /// 用「当前 ClientSize 相对 design96 的倍数」反推 DPI。
+        /// WinForms 的窗体尺寸就是按真实 DPI 缩放的，因此这个推断很准。
+        /// </summary>
+        private int DpiImpliedByWindowSize()
+        {
+            if (_design96.IsEmpty || _design96.Width <= 0) return 0;
+
+            double ratio = (double)ClientSize.Width / _design96.Width;
+            int dpi = (int)Math.Round(96 * ratio);
+
+            // 只在常见 DPI 档位附近才采信
+            int[] known = { 96, 120, 144, 168, 192, 216, 240, 288, 336, 384 };
+            int best = 0, bestDiff = int.MaxValue;
+            foreach (int k in known)
+            {
+                int diff = Math.Abs(k - dpi);
+                if (diff < bestDiff) { bestDiff = diff; best = k; }
+            }
+            return bestDiff <= 12 ? best : 0;
+        }
+
+        /// <summary>
+        /// DPI 变化后：按"窗口所在显示器的真实 DPI"重设客户区尺寸，并把窗口夹进工作区。
+        /// 只调整 ClientSize / Location，**绝不修改任何控件坐标**。
+        /// </summary>
+        private void FontCreator_DpiChanged(object sender, DpiChangedEventArgs e)
+        {
+            if (IsDisposed) return;
+
+            DpiDiag("DpiChanged ENTER: event old=" + e.DeviceDpiOld + " new=" + e.DeviceDpiNew +
+                    " ClientSize=" + ClientSize + " design96=" + _design96 +
+                    " screen=" + SafeScreenInfo());
+
+            // 延后到 WinForms 完成自身缩放、且窗口已真正落到新显示器之后再换算
+            BeginInvoke(new Action(() =>
+            {
+                if (IsDisposed || _restoringSize) return;
+                ApplyForCurrentScreen();
+            }));
+        }
+
+        /// <summary>
+        /// 按"窗口所在显示器的真实 DPI"重排窗口与全部控件，并保证窗口完整落在工作区内。
+        /// </summary>
+        private void ApplyForCurrentScreen()
+        {
+            if (IsDisposed || _restoringSize) return;
+
+            Screen scr;
+            try { scr = Screen.FromControl(this); } catch { return; }
+            if (scr == null) return;
+
+            int dpi = MonitorDpi();
+
+            DpiDiag("  [apply] monitorDpi=" + dpi + " ClientSize=" + ClientSize +
+                    " screen=" + scr.DeviceName);
+
+            // 从 96 DPI 基线直接重算绝对坐标，彻底摆脱 WinForms 的增量缩放累积
+            // （实测增量方式会把控件放大到 1.25×1.75=2.19 倍，窗口只有 1.75 倍）。
+            ApplyDpiToLayout(dpi);
+
+            _restoringSize = true;
+            try
+            {
+                // 装不下工作区时按工作区收缩（客户区会被压缩，控件靠滚动访问）
+                Rectangle wa = scr.WorkingArea;
+                int ncH = base.Height - ClientSize.Height;
+                int ncW = base.Width - ClientSize.Width;
+
+                int maxClientH = wa.Height - ncH;
+                int maxClientW = wa.Width - ncW;
+
+                Size target = ClientSize;
+                if (maxClientH > 0 && target.Height > maxClientH) target.Height = maxClientH;
+                if (maxClientW > 0 && target.Width > maxClientW) target.Width = maxClientW;
+
+                if (target != ClientSize)
+                {
+                    ClientSize = target;
+
+                    // 客户区被压缩时提供滚动，保证底部/右侧内容仍可访问
+                    int needW = 0, needH = 0;
+                    foreach (Control c in Controls)
+                    {
+                        if (!c.Visible || c is MenuStrip) continue;
+                        if (c.Right > needW) needW = c.Right;
+                        if (c.Bottom > needH) needH = c.Bottom;
+                    }
+                    if (needW > ClientSize.Width || needH > ClientSize.Height)
+                    {
+                        AutoScroll = true;
+                        AutoScrollMinSize = new Size(needW, needH);
+                    }
+                    else
+                    {
+                        AutoScroll = false;
+                        AutoScrollMinSize = System.Drawing.Size.Empty;
+                    }
+                }
+                else
+                {
+                    AutoScroll = false;
+                    AutoScrollMinSize = System.Drawing.Size.Empty;
+                }
+
+                // 位置：完整夹进工作区（副屏在主屏上方时 y 为负，统一处理）
+                int x = Left, y = Top;
+                if (x + base.Width > wa.Right) x = wa.Right - base.Width;
+                if (y + base.Height > wa.Bottom) y = wa.Bottom - base.Height;
+                if (x < wa.Left) x = wa.Left;
+                if (y < wa.Top) y = wa.Top;
+                if (x != Left || y != Top)
+                    Location = new Point(x, y);
+
+                DpiDiag("  [apply] done: ClientSize=" + ClientSize +
+                        " Location=" + Location + " WA=" + wa + " scroll=" + AutoScroll);
+
+                // 诊断：确认控件是否与窗口匹配
+                try
+                {
+                    var dgv = Controls["dataGridViewWithCoord"];
+                    var pan = Controls["panelTexturePreview"];
+                    DpiDiag("  [apply] ctrl: dgv=" + (dgv != null ? dgv.Bounds.ToString() : "?") +
+                            " dgvRight=" + (dgv != null ? dgv.Right.ToString() : "?") +
+                            " panelRight=" + (pan != null ? pan.Right.ToString() : "?") +
+                            " clientW=" + ClientSize.Width);
+                }
+                catch { }
+            }
+            finally
+            {
+                _restoringSize = false;
+            }
+        }
+
+        /// <summary>DPI 相关诊断输出（仅在 Debug 构建下可见，不产生文件）。</summary>
+        [System.Diagnostics.Conditional("DEBUG")]
+        internal static void DpiDiag(string msg)
+        {
+            System.Diagnostics.Debug.WriteLine("[DPI] " + msg);
+        }
+
+        private int SafeDpi()
+        {
+            try { return DeviceDpi; } catch { return -1; }
+        }
+
+        private string SafeScreenInfo()
+        {
+            try
+            {
+                var s = Screen.FromControl(this);
+                return s.DeviceName + " Bounds=" + s.Bounds + " WA=" + s.WorkingArea;
+            }
+            catch { return "?"; }
+        }
+        private void ClearAnchorsRecursive(Control parent)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                c.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+                if (c.HasChildren) ClearAnchorsRecursive(c);
+            }
         }
 
         private void FontCreator_FormClosing(object sender, FormClosingEventArgs e)
