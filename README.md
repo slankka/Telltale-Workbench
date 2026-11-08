@@ -1,3 +1,4 @@
+[![.NET](https://github.com/slankka/Telltale-Workbench/actions/workflows/dotnet.yml/badge.svg?branch=main)](https://github.com/slankka/Telltale-Workbench/actions/workflows/dotnet.yml)
 # Telltale Workbench
 
 **Telltale Workbench** is a comprehensive toolkit for modifying Telltale Games resource files. It covers the full fan translation pipeline: unpack archives, create fonts, edit translation text, and repack into game-ready archives.

@@ -1,0 +1,60 @@
+name: .NET Release
+
+on:
+  push:
+    tags:
+      - 'v*'   # 推送 v1.0.0 这种 tag 时触发
+
+env:
+  SOLUTION_FILE: "master/Telltale Workbench.sln"
+  BUILD_DIR: "master/bin/Release"
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Restore NuGet packages
+      run: nuget restore "${{ env.SOLUTION_FILE }}"
+
+    - name: Build
+      run: msbuild "${{ env.SOLUTION_FILE }}" /p:Configuration=Release /p:Platform="Any CPU"
+
+    - name: Create artifacts folder
+      run: mkdir artifacts
+
+    - name: Zip build output
+      run: |
+        powershell Compress-Archive -Path "${{ env.BUILD_DIR }}\*" -DestinationPath "artifacts\TelltaleWorkbench-${{ github.ref_name }}.zip" -Force
+
+    - name: Generate changelog
+      id: changelog
+      uses: mikepenz/release-changelog-builder-action@v4
+      with:
+        configuration: ".github/changelog-config.json"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v2
+      with:
+        files: artifacts/*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
