@@ -99,8 +99,32 @@ namespace TTG_Tools
                 (int)Math.Round(ClientSize.Width / s),
                 (int)Math.Round(ClientSize.Height / s));
 
+            // 记录 96 DPI 下的"边框 + 标题栏"厚度。
+            // 这里必须存成基线常量：运行时用 base.Width - ClientSize.Width 测量会被
+            // 操作系统的"窗口不得超过屏幕"钳制污染（实测 200% 时会算出负数）。
+            _designNcW96 = (int)Math.Round((base.Width - ClientSize.Width) / s);
+            _designNcH96 = (int)Math.Round((base.Height - ClientSize.Height) / s);
+
             _designBounds96 = new System.Collections.Generic.Dictionary<Control, Rectangle>();
             CaptureBounds96Recursive(this, s);
+        }
+
+        /// <summary>96 DPI 下的非客户区宽度（左右边框）。</summary>
+        private int _designNcW96;
+
+        /// <summary>96 DPI 下的非客户区高度（标题栏 + 上下边框）。</summary>
+        private int _designNcH96;
+
+        /// <summary>按当前缩放系数取非客户区宽度（用基线常量，不受 OS 钳制影响）。</summary>
+        private int NcWidth(float s)
+        {
+            return Math.Max(0, (int)Math.Round(_designNcW96 * s));
+        }
+
+        /// <summary>按当前缩放系数取非客户区高度。</summary>
+        private int NcHeight(float s)
+        {
+            return Math.Max(0, (int)Math.Round(_designNcH96 * s));
         }
 
         private void CaptureBounds96Recursive(Control parent, float s)
@@ -127,6 +151,7 @@ namespace TTG_Tools
             if (_design96.IsEmpty || _designBounds96 == null) return;
 
             float s = dpi / 96f;
+            _lastScale = s;
 
             _restoringSize = true;
             SuspendLayout();
@@ -137,6 +162,20 @@ namespace TTG_Tools
                     (int)Math.Round(_design96.Height * s));
 
                 ApplyBounds96Recursive(this, s);
+
+                // 关键：设计基线下内容右边界距客户区右沿只有 4px。
+                // 一旦纵向装不下出现**垂直滚动条**，它会吃掉十几像素宽度，
+                // 于是内容瞬间"超宽"→ 连锁冒出**横向滚动条**（175% 实测正是如此）。
+                // 这里主动把客户区宽度撑到「内容宽 + 垂直滚动条 + 余量」，
+                // 让垂直滚动条有独立空间，不再挤占内容。
+                int vRes = (int)Math.Ceiling(SystemInformation.VerticalScrollBarWidth * s);
+                int fitW = ContentNeedWidth() + vRes + 4;
+                if (fitW > ClientSize.Width)
+                {
+                    DpiDiag("  [ApplyDpiToLayout] 加宽客户区 " + ClientSize.Width + " → " + fitW +
+                            "（预留垂直滚动条 " + vRes + "）");
+                    ClientSize = new Size(fitW, ClientSize.Height);
+                }
             }
             finally
             {
@@ -170,6 +209,9 @@ namespace TTG_Tools
         private System.Collections.Generic.Dictionary<Control, Rectangle> _designBounds96;
 
         private bool _restoringSize;
+
+        /// <summary>当前实际采用的布局缩放系数（可能被屏幕宽度限制而低于系统 DPI）。</summary>
+        private float _lastScale = 1f;
 
         // ---- Win32: 查询"窗口所在显示器"的真实 DPI ----
         // 参考 winsiderss/systeminformer#1386（同类问题的行业级案例）：
@@ -487,8 +529,8 @@ namespace TTG_Tools
             Rectangle wa = RealWorkingArea(scr);
             if (wa.Width <= 0 || wa.Height <= 0) return;
 
-            int ncH = base.Height - ClientSize.Height;
-            int ncW = base.Width - ClientSize.Width;
+            int ncH = NcHeight(_lastScale);
+            int ncW = NcWidth(_lastScale);
 
             int topPad = Math.Max(24, ncH) + 6;
             int bottomPad = Math.Max(24, wa.Height / 12);
@@ -512,13 +554,8 @@ namespace TTG_Tools
 
                     // 拖拽中窗口被压缩后内容会溢出，必须同步启用滚动，
                     // 否则松手前用户看不到底部/右侧控件。
-                    int reqW = 0, reqH = 0;
-                    foreach (Control c in Controls)
-                    {
-                        if (!c.Visible || c is MenuStrip) continue;
-                        if (c.Right > reqW) reqW = c.Right;
-                        if (c.Bottom > reqH) reqH = c.Bottom;
-                    }
+                    int reqW = ContentNeedWidth();
+                    int reqH = ContentNeedHeight();
 
                     if (reqW > ClientSize.Width || reqH > ClientSize.Height)
                     {
@@ -570,9 +607,87 @@ namespace TTG_Tools
 
             // 从 96 DPI 基线直接重算绝对坐标，彻底摆脱 WinForms 的增量缩放累积
             // （实测增量方式会把控件放大到 1.25×1.75=2.19 倍，窗口只有 1.75 倍）。
-            ApplyDpiToLayout(dpi);
+            //
+            // 但若该 DPI 下内容物理上比屏幕还宽（200% 实测需 2738 而屏只有 2560），
+            // 继续按 200% 排版只会得到一条横向滚动条。这里改为等比降低整体缩放，
+            // 让界面完整可见——比让用户左右拖动滚动条好得多。
+            int useDpi = FitDpiToScreenWidth(dpi, scr);
+            ApplyDpiToLayout(useDpi);
 
             FitToWorkAreaAndScroll(scr);
+        }
+
+        /// <summary>
+        /// 若「内容宽度 + 垂直滚动条预留」超出屏幕可用宽度，就等比降低布局缩放
+        /// 直到能装下（最多 4 轮收敛，下限 96 DPI）。
+        /// <para>
+        /// 这是「消除外层窗体横向滚动条」的核心：设计基线下内容右边界只比客户区
+        /// 窄 4px，纵向一旦出现滚动条，它挤掉的那十几像素就足以连锁触发横向滚动条。
+        /// </para>
+        /// </summary>
+        private int FitDpiToScreenWidth(int dpi, Screen scr)
+        {
+            if (_design96.Width <= 0 || _designBounds96 == null) return dpi;
+
+            Rectangle wa = RealWorkingArea(scr);
+            if (wa.Width <= 0) return dpi;
+
+            int useDpi = dpi;
+            for (int i = 0; i < 4; i++)
+            {
+                ApplyDpiToLayout(useDpi);
+
+                float s = useDpi / 96f;
+                int ncW = NcWidth(s);
+                int maxClientW = wa.Width - 8 - ncW;
+
+                int vRes = (int)Math.Ceiling(SystemInformation.VerticalScrollBarWidth * s);
+                int needW = ContentNeedWidth() + vRes + 4;
+
+                DpiDiag("  [fitDpi " + i + "] dpi=" + useDpi + " needW=" + needW +
+                        " maxClientW=" + maxClientW + " vRes=" + vRes);
+
+                if (needW <= maxClientW) break;
+
+                // 需要的缩放系数按比例折算，向下取整后再退 1，确保下一轮一定更小
+                double ratio = (double)maxClientW / needW;
+                int next = (int)Math.Floor(useDpi * ratio);
+                if (next >= useDpi) next = useDpi - 1;
+                if (next < 96) next = 96;
+                if (next >= useDpi) break;        // 已到 96 DPI，无法再缩
+                useDpi = next;
+            }
+
+            if (useDpi != dpi)
+                DpiDiag("  [fitDpi done] 系统 DPI=" + dpi + " → 实际采用=" + useDpi +
+                        "（屏幕宽度装不下，等比缩小）");
+
+            return useDpi;
+        }
+
+        /// <summary>所有可见顶层控件的最大右边界（内容所需宽度）。</summary>
+        private int ContentNeedWidth()
+        {
+            int w = 0;
+            foreach (Control c in Controls)
+            {
+                // 不能依赖 c.Visible：窗体尚未显示时它恒为 false（实测探针会得到 0）。
+                if (c is MenuStrip) continue;
+                if (c.Right > w) w = c.Right;
+            }
+            return w;
+        }
+
+        /// <summary>所有可见顶层控件的最大下边界（内容所需高度）。</summary>
+        private int ContentNeedHeight()
+        {
+            int h = 0;
+            foreach (Control c in Controls)
+            {
+                if (c is MenuStrip) continue;
+                if (c.Bottom > h) h = c.Bottom;
+            }
+            return h;
         }
 
         /// <summary>
@@ -605,14 +720,8 @@ namespace TTG_Tools
 
                     // 每轮都重新测量内容需求：滚动范围必须跟上实际控件尺寸
                     // （实测只在循环外测一次会导致 minSize 停留在旧值）。
-                    needW = 0;
-                    needH = 0;
-                    foreach (Control c in Controls)
-                    {
-                        if (!c.Visible || c is MenuStrip) continue;
-                        if (c.Right > needW) needW = c.Right;
-                        if (c.Bottom > needH) needH = c.Bottom;
-                    }
+                    needW = ContentNeedWidth();
+                    needH = ContentNeedHeight();
 
                     // 内容装不下 → 开滚动
                     bool needScroll = needW > ClientSize.Width || needH > ClientSize.Height;
@@ -631,8 +740,11 @@ namespace TTG_Tools
                     }
 
                     // 重新取非客户区尺寸（滚动条可能改变它）
-                    int ncH = base.Height - ClientSize.Height;
-                    int ncW = base.Width - ClientSize.Width;
+                    // 用基线常量而非 base.Width - ClientSize.Width：后者会被
+                    // 操作系统的“窗口不得超过屏幕”钳制污染（实测 200% 算出负数）。
+                    float ps = _lastScale;
+                    int ncH = NcHeight(ps);
+                    int ncW = NcWidth(ps);
 
                     // 统一在这里算出"可给窗体用的最大尺寸"，不再叠加多处留白。
                     // 顶部必须让出整条标题栏 + 余量，否则标题栏会贴屏幕边缘点不到。
@@ -716,8 +828,8 @@ namespace TTG_Tools
             if (wa.Width <= 0 || wa.Height <= 0) return;
 
             // 非客户区高度（标题栏 + 上下边框），DPI 感知下已按当前缩放取值。
-            int ncH = base.Height - ClientSize.Height;
-            int ncW = base.Width - ClientSize.Width;
+            int ncH = NcHeight(_lastScale);
+            int ncW = NcWidth(_lastScale);
 
             // 顶部留白：至少容下整条标题栏，再多给几像素余量，确保可点击。
             int topPad = Math.Max(24, ncH) + 6;
