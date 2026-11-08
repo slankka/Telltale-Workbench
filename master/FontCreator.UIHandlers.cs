@@ -474,17 +474,6 @@ namespace TTG_Tools
             // 实测副屏报 1440 而真实可用仅 1356，会导致"判断装得下"却实际溢出。
             Rectangle wa = RealWorkingArea(scr);
 
-            // 需要收缩时额外留边，让窗口**绝不满屏**。
-            // 原因：Windows 报告的 rcWork 在部分高缩放/多屏组合下会偏大，
-            // 若窗口正好顶到 rcWork 边缘，实际会被任务栏或屏幕边界遮挡。
-            // 留 6% 边距可以覆盖这种误差（200% + 任务栏场景下 94% × 1440 = 1354 ≤ 1356）。
-            int insetW = (int)(wa.Width * 0.03);
-            int insetH = (int)(wa.Height * 0.03);
-            Rectangle safeWa = new Rectangle(
-                wa.Left + insetW, wa.Top + insetH,
-                Math.Max(200, wa.Width - insetW * 2),
-                Math.Max(200, wa.Height - insetH * 2));
-
             _restoringSize = true;
             try
             {
@@ -528,26 +517,40 @@ namespace TTG_Tools
                     int ncH = base.Height - ClientSize.Height;
                     int ncW = base.Width - ClientSize.Width;
 
+                    // 统一在这里算出"可给窗体用的最大尺寸"，不再叠加多处留白。
+                    // 顶部必须让出整条标题栏 + 余量，否则标题栏会贴屏幕边缘点不到。
+                    // 底部要预留一块空间：Windows 的 rcWork 在任务栏"自动隐藏"时
+                    // 仍返回整屏高度（实测报 1440），任务栏弹出会遮住窗口底部。
+                    // 按工作区高度的 1/12 预留（1440 → 120px），足以容纳 200% 缩放的任务栏。
+                    int topPad = Math.Max(24, ncH) + 6;
+                    int bottomPad = Math.Max(24, wa.Height / 12);
+                    int sidePad = 4;
+
+                    int maxFormH = wa.Height - topPad - bottomPad;
+                    int maxFormW = wa.Width - sidePad * 2;
+
                     Size t = ClientSize;
-                    int limH = safeWa.Height - ncH;
-                    int limW = safeWa.Width - ncW;
+                    int limH = maxFormH - ncH;
+                    int limW = maxFormW - ncW;
                     if (limH > 0 && t.Height > limH) t.Height = limH;
                     if (limW > 0 && t.Width > limW) t.Width = limW;
                     if (t != ClientSize)
                         ClientSize = t;
 
-                    // 位置夹取（用当前真实 Form 尺寸，避免越界）
+                    // 位置夹取
                     int x = Left, y = Top;
-                    if (x + Wide() > safeWa.Right) x = safeWa.Right - Wide();
-                    if (y + High() > safeWa.Bottom) y = safeWa.Bottom - High();
-                    if (x < safeWa.Left) x = safeWa.Left;
-                    if (y < safeWa.Top) y = safeWa.Top;
+                    if (x + Wide() > wa.Right - sidePad) x = wa.Right - sidePad - Wide();
+                    if (x < wa.Left + sidePad) x = wa.Left + sidePad;
+                    if (y < wa.Top + topPad) y = wa.Top + topPad;
+                    if (y + High() > wa.Bottom - bottomPad) y = wa.Bottom - bottomPad - High();
+                    if (y < wa.Top + topPad) y = wa.Top + topPad;
                     if (x != Left || y != Top)
                         Location = new Point(x, y);
 
                     DpiDiag("  [fit pass " + pass + "] client=" + ClientSize +
                             " form=" + base.Size + " scroll=" + AutoScroll +
-                            " need=" + needW + "x" + needH);
+                            " need=" + needW + "x" + needH +
+                            " topPad=" + topPad + " loc=" + Location);
 
                     // 已稳定（尺寸没再变化）就停
                     if (ClientSize == before && base.Size == beforeForm)
@@ -556,8 +559,8 @@ namespace TTG_Tools
                     Application.DoEvents();
                 }
 
-                // 最终硬约束：无论前面收敛如何，确保外框不超过安全区
-                ForceWindowInside(safeWa);
+                // 最终硬约束：无论前面收敛如何，确保外框不超过工作区且标题栏可点
+                ForceWindowInside(wa);
 
                 DpiDiag("  [fit done] client=" + ClientSize + " form=" + base.Size +
                         " location=" + Location + " scroll=" + AutoScroll +
@@ -584,21 +587,48 @@ namespace TTG_Tools
         /// <summary>
         /// 最终硬约束：用 MoveWindow 直接设定外框尺寸与位置，
         /// 绕过 WinForms 布局循环，保证窗口一定落在工作区内。
+        /// <para>
+        /// 额外保证**标题栏完整可见且不贴屏幕边缘**：若窗口顶部正好压在
+        /// 工作区上沿，标题栏会紧贴物理屏幕边缘，鼠标几乎抓不到（实测反馈
+        /// "只能点标题栏中间"）。因此固定留出 非客户区上沿高度 + 余量 的空白。
+        /// </para>
         /// </summary>
         private void ForceWindowInside(Rectangle wa)
         {
             if (Handle == IntPtr.Zero) return;
             if (wa.Width <= 0 || wa.Height <= 0) return;
 
-            // 留 2px 余量，避免因边框/舍入导致"看起来还差一点"。
-            int w = Math.Min(Wide(), wa.Width - 2);
-            int h = Math.Min(High(), wa.Height - 2);
+            // 非客户区高度（标题栏 + 上下边框），DPI 感知下已按当前缩放取值。
+            int ncH = base.Height - ClientSize.Height;
+            int ncW = base.Width - ClientSize.Width;
 
-            int x = Left, y = Top;
-            if (x + w > wa.Right - 2) x = wa.Right - 2 - w;
-            if (y + h > wa.Bottom - 2) y = wa.Bottom - 2 - h;
-            if (x < wa.Left) x = wa.Left;
-            if (y < wa.Top) y = wa.Top;
+            // 顶部留白：至少容下整条标题栏，再多给几像素余量，确保可点击。
+            int topPad = Math.Max(24, ncH) + 6;
+            // 底部留白：任务栏"自动隐藏"时 rcWork 仍报整屏高度，需要预留弹出空间。
+            int bottomPad = Math.Max(24, wa.Height / 12);
+            int leftPad = 4;
+            int rightPad = 4;
+
+            // 尺寸上限：高度扣掉上下留白，宽度扣掉左右留白。
+            int maxW = wa.Width - leftPad - rightPad;
+            int maxH = wa.Height - topPad - bottomPad;
+
+            int w = Wide();
+            int h = High();
+            if (maxW > 0 && w > maxW) w = maxW;
+            if (maxH > 0 && h > maxH) h = maxH;
+
+            // 水平夹取
+            int x = Left;
+            if (x + w > wa.Right - rightPad) x = wa.Right - rightPad - w;
+            if (x < wa.Left + leftPad) x = wa.Left + leftPad;
+
+            // 垂直夹取：先保证顶部留白，再保证底部不越界。
+            // 因 h 已 <= wa.Height - topPad - bottomPad，两者不会冲突。
+            int y = Top;
+            if (y < wa.Top + topPad) y = wa.Top + topPad;
+            if (y + h > wa.Bottom - bottomPad) y = wa.Bottom - bottomPad - h;
+            if (y < wa.Top + topPad) y = wa.Top + topPad;
 
             if (w == Wide() && h == High() && x == Left && y == Top)
                 return;
@@ -606,7 +636,8 @@ namespace TTG_Tools
             NativeMethods.MoveWindow(Handle, x, y, w, h, true);
             Application.DoEvents();
             DpiDiag("  [force] -> loc=" + new Point(x, y) + " size=" + new Size(w, h) +
-                    " 实际=" + Bounds);
+                    " topPad=" + topPad + " 实际=" + Bounds +
+                    " 标题栏底=" + (Bounds.Top + ncH));
         }
 
         /// <summary>Win32 互操作。</summary>
