@@ -891,9 +891,9 @@ namespace TTG_Tools
             // 
             // buttonDeleteProfile
             // 
-            this.buttonDeleteProfile.Location = new System.Drawing.Point(142, 32);
+            this.buttonDeleteProfile.Location = new System.Drawing.Point(144, 32);
             this.buttonDeleteProfile.Name = "buttonDeleteProfile";
-            this.buttonDeleteProfile.Size = new System.Drawing.Size(36, 21);
+            this.buttonDeleteProfile.Size = new System.Drawing.Size(34, 21);
             this.buttonDeleteProfile.TabIndex = 9;
             this.buttonDeleteProfile.Text = "Del";
             this.buttonDeleteProfile.UseVisualStyleBackColor = true;
@@ -901,9 +901,9 @@ namespace TTG_Tools
             // 
             // buttonSaveProfile
             // 
-            this.buttonSaveProfile.Location = new System.Drawing.Point(106, 32);
+            this.buttonSaveProfile.Location = new System.Drawing.Point(96, 32);
             this.buttonSaveProfile.Name = "buttonSaveProfile";
-            this.buttonSaveProfile.Size = new System.Drawing.Size(36, 21);
+            this.buttonSaveProfile.Size = new System.Drawing.Size(46, 21);
             this.buttonSaveProfile.TabIndex = 8;
             this.buttonSaveProfile.Text = "Save";
             this.buttonSaveProfile.UseVisualStyleBackColor = true;
@@ -924,15 +924,15 @@ namespace TTG_Tools
             this.comboBoxProfiles.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.comboBoxProfiles.Location = new System.Drawing.Point(4, 33);
             this.comboBoxProfiles.Name = "comboBoxProfiles";
-            this.comboBoxProfiles.Size = new System.Drawing.Size(96, 21);
+            this.comboBoxProfiles.Size = new System.Drawing.Size(88, 21);
             this.comboBoxProfiles.TabIndex = 7;
             this.comboBoxProfiles.SelectedIndexChanged += new System.EventHandler(this.comboBoxProfiles_SelectedIndexChanged);
             // 
             // buttonPickFont
             // 
-            this.buttonPickFont.Location = new System.Drawing.Point(129, 125);
+            this.buttonPickFont.Location = new System.Drawing.Point(105, 125);
             this.buttonPickFont.Name = "buttonPickFont";
-            this.buttonPickFont.Size = new System.Drawing.Size(51, 22);
+            this.buttonPickFont.Size = new System.Drawing.Size(72, 22);
             this.buttonPickFont.TabIndex = 12;
             this.buttonPickFont.Text = "Choose";
             this.buttonPickFont.UseVisualStyleBackColor = true;
@@ -943,7 +943,7 @@ namespace TTG_Tools
             this.textBoxGenFont.Location = new System.Drawing.Point(5, 125);
             this.textBoxGenFont.Name = "textBoxGenFont";
             this.textBoxGenFont.ReadOnly = true;
-            this.textBoxGenFont.Size = new System.Drawing.Size(116, 21);
+            this.textBoxGenFont.Size = new System.Drawing.Size(96, 21);
             this.textBoxGenFont.TabIndex = 11;
             // 
             // groupBoxFntAdjust
