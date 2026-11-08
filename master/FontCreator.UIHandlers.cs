@@ -426,6 +426,123 @@ namespace TTG_Tools
         /// <summary>DpiChanged 给出的目标屏（拖拽中 Screen.FromControl 不可靠）。</summary>
         private Screen _pendingScreen;
 
+        // ---- 拖拽过程处理 ----
+        // 关键：拖动过程中窗口位置由操作系统/用户鼠标控制。
+        // 若窗口比目标屏还高（200% 下 1433 vs 可用 1356），鼠标根本"拖不进去"：
+        // 标题栏必须超出屏幕上沿才能让下边界进入副屏（实测截图正是如此），
+        // 松手后窗口又掉回主屏。
+        // 因此必须在拖拽**过程中**就按光标所在屏把窗口缩到能装下，
+        // 并在 WM_EXITSIZEMOVE（松手定稿）后再纠正一次位置。
+        private const int WM_MOVING = 0x0216;
+        private const int WM_EXITSIZEMOVE = 0x0232;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetCursorPos(out POINT pt);
+
+        private Rectangle _lastMoveRect;
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+
+            if (IsDisposed) return;
+
+            if (m.Msg == WM_MOVING)
+            {
+                // 拖拽中：把窗口尺寸限制到光标所在屏可容纳的大小，
+                // 这样它才有可能被拖进副屏。
+                try
+                {
+                    POINT pt;
+                    if (GetCursorPos(out pt))
+                    {
+                        var scr = Screen.FromPoint(new System.Drawing.Point(pt.X, pt.Y));
+                        ShrinkWindowForScreen(scr);
+                    }
+                }
+                catch { }
+            }
+            else if (m.Msg == WM_EXITSIZEMOVE)
+            {
+                DpiDiag("WM_EXITSIZEMOVE bounds=" + Bounds +
+                        " screen=" + SafeScreenInfo());
+
+                // 松手后再按最终屏幕做完整适配（尺寸 + 位置）
+                BeginInvoke(new Action(() =>
+                {
+                    if (IsDisposed || _restoringSize) return;
+                    ApplyForCurrentScreen();
+                }));
+            }
+        }
+
+        /// <summary>
+        /// 拖拽经过某屏时，若窗口比该屏可用区还大，就地缩小（只改尺寸，不改位置）。
+        /// 这样用户才有可能把窗口拖进那块屏幕。
+        /// </summary>
+        private void ShrinkWindowForScreen(Screen scr)
+        {
+            if (scr == null || _restoringSize) return;
+
+            Rectangle wa = RealWorkingArea(scr);
+            if (wa.Width <= 0 || wa.Height <= 0) return;
+
+            int ncH = base.Height - ClientSize.Height;
+            int ncW = base.Width - ClientSize.Width;
+
+            int topPad = Math.Max(24, ncH) + 6;
+            int bottomPad = Math.Max(24, wa.Height / 12);
+
+            int maxFormH = wa.Height - topPad - bottomPad;
+            int maxFormW = wa.Width - 8;
+
+            int needH = maxFormH - ncH;
+            int needW = maxFormW - ncW;
+
+            Size t = ClientSize;
+            if (needH > 0 && t.Height > needH) t.Height = needH;
+            if (needW > 0 && t.Width > needW) t.Width = needW;
+
+            if (t != ClientSize)
+            {
+                _restoringSize = true;
+                try
+                {
+                    ClientSize = t;
+
+                    // 拖拽中窗口被压缩后内容会溢出，必须同步启用滚动，
+                    // 否则松手前用户看不到底部/右侧控件。
+                    int reqW = 0, reqH = 0;
+                    foreach (Control c in Controls)
+                    {
+                        if (!c.Visible || c is MenuStrip) continue;
+                        if (c.Right > reqW) reqW = c.Right;
+                        if (c.Bottom > reqH) reqH = c.Bottom;
+                    }
+
+                    if (reqW > ClientSize.Width || reqH > ClientSize.Height)
+                    {
+                        if (AutoScrollMinSize.Width < reqW || AutoScrollMinSize.Height < reqH)
+                            AutoScrollMinSize = new Size(reqW, reqH);
+                        AutoScroll = true;
+                    }
+                    else
+                    {
+                        AutoScrollMinSize = System.Drawing.Size.Empty;
+                        AutoScroll = false;
+                    }
+
+                    DpiDiag("  [drag-shrink] → client=" + ClientSize +
+                            " form=" + base.Size + " (屏 " + scr.DeviceName + " 可用 " + wa + ")" +
+                            " need=" + reqW + "x" + reqH + " scroll=" + AutoScroll);
+                }
+                finally
+                {
+                    _restoringSize = false;
+                }
+            }
+        }
+
         /// <summary>
         /// 按"窗口所在显示器的真实 DPI"重排窗口与全部控件，并保证窗口完整落在工作区内。
         /// </summary>
