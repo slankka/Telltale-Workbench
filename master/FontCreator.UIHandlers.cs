@@ -198,6 +198,71 @@ namespace TTG_Tools
         private const uint MONITOR_DEFAULTTONEAREST = 2;
         private const int MDT_EFFECTIVE_DPI = 0;
 
+        // ---- Win32: 取监视器的真实工作区 ----
+        // Screen.WorkingArea 在 PerMonitorV2 + 高缩放下可能不准（实测副屏报 1440，
+        // 而任务栏存在时真实可用只有 1356），据此判断"装得下"会漏掉收缩。
+        // GetMonitorInfo 返回的 rcWork 是系统权威值。
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left, Top, Right, Bottom;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+        }
+
+        /// <summary>取指定屏幕的真实工作区（扣掉任务栏），失败时回落到 Screen.WorkingArea。</summary>
+        private Rectangle RealWorkingArea(Screen scr)
+        {
+            if (scr == null) return Rectangle.Empty;
+
+            try
+            {
+                Rectangle b = scr.Bounds;
+                var pt = new POINT
+                {
+                    X = b.Left + Math.Max(1, b.Width / 2),
+                    Y = b.Top + Math.Max(1, b.Height / 2)
+                };
+
+                IntPtr hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+                if (hmon != IntPtr.Zero)
+                {
+                    var mi = new MONITORINFO();
+                    mi.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(MONITORINFO));
+
+                    if (GetMonitorInfo(hmon, ref mi))
+                    {
+                        var r = new Rectangle(
+                            mi.rcWork.Left,
+                            mi.rcWork.Top,
+                            mi.rcWork.Right - mi.rcWork.Left,
+                            mi.rcWork.Bottom - mi.rcWork.Top);
+
+                        if (r.Width > 0 && r.Height > 0)
+                        {
+                            if (r != scr.WorkingArea)
+                                DpiDiag("  [RealWorkingArea] " + scr.DeviceName +
+                                        " Screen.WA=" + scr.WorkingArea + " → GetMonitorInfo=" + r);
+                            return r;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return scr.WorkingArea;
+        }
+
         /// <summary>取"本窗体所在显示器"的监视器句柄。Handle 未就绪时用屏幕位置查。</summary>
         private IntPtr CurrentMonitor()
         {
@@ -226,6 +291,36 @@ namespace TTG_Tools
             catch { }
 
             return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// 指定屏幕的真实 DPI（用于拖拽途中定位目标屏，此时 Handle 的监视器可能还是旧屏）。
+        /// </summary>
+        private int MonitorDpiOf(Screen scr)
+        {
+            if (scr == null) return MonitorDpi();
+
+            try
+            {
+                Rectangle b = scr.Bounds;
+                var pt = new POINT
+                {
+                    X = b.Left + Math.Max(1, b.Width / 2),
+                    Y = b.Top + Math.Max(1, b.Height / 2)
+                };
+                IntPtr hmon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+                if (hmon == IntPtr.Zero) return MonitorDpi();
+
+                uint dx = 0, dy = 0;
+                if (GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, out dx, out dy) == 0 && dx > 0)
+                {
+                    DpiDiag("  [MonitorDpiOf] " + scr.DeviceName + " → " + dx);
+                    return (int)dx;
+                }
+            }
+            catch { }
+
+            return MonitorDpi();
         }
 
         /// <summary>
@@ -302,31 +397,59 @@ namespace TTG_Tools
 
             DpiDiag("DpiChanged ENTER: event old=" + e.DeviceDpiOld + " new=" + e.DeviceDpiNew +
                     " ClientSize=" + ClientSize + " design96=" + _design96 +
-                    " screen=" + SafeScreenInfo());
+                    " suggested=" + e.SuggestedRectangle +
+                    " screenFromControl=" + SafeScreenInfo());
+
+            // 关键：拖拽瞬间窗口还跨在两屏之间，Screen.FromControl 往往返回**旧屏**，
+            // 于是用错的工作区去夹取，导致副屏上仍然放不下。
+            // 事件里的 SuggestedRectangle 是 Windows 建议的新窗口位置，
+            // 用它定位目标屏才准确。
+            Screen target = null;
+            try
+            {
+                if (e.SuggestedRectangle.Width > 0 && e.SuggestedRectangle.Height > 0)
+                    target = Screen.FromRectangle(e.SuggestedRectangle);
+            }
+            catch { }
+
+            _pendingScreen = target;
 
             // 延后到 WinForms 完成自身缩放、且窗口已真正落到新显示器之后再换算
             BeginInvoke(new Action(() =>
             {
                 if (IsDisposed || _restoringSize) return;
-                ApplyForCurrentScreen();
+                ApplyForCurrentScreen(_pendingScreen);
+                _pendingScreen = null;
             }));
         }
+
+        /// <summary>DpiChanged 给出的目标屏（拖拽中 Screen.FromControl 不可靠）。</summary>
+        private Screen _pendingScreen;
 
         /// <summary>
         /// 按"窗口所在显示器的真实 DPI"重排窗口与全部控件，并保证窗口完整落在工作区内。
         /// </summary>
-        private void ApplyForCurrentScreen()
+        private void ApplyForCurrentScreen(Screen preferred = null)
         {
             if (IsDisposed || _restoringSize) return;
 
-            Screen scr;
-            try { scr = Screen.FromControl(this); } catch { return; }
+            // 优先用调用方给出的目标屏（DpiChanged 的 SuggestedRectangle），
+            // 否则回落到窗口当前所在屏。
+            Screen scr = preferred;
+            if (scr == null)
+            {
+                try { scr = Screen.FromControl(this); } catch { return; }
+            }
             if (scr == null) return;
 
-            int dpi = MonitorDpi();
+            // 若窗口中心已不在该屏内（拖到副屏但尚未完全进入），
+            // 用目标屏的工作区做夹取仍是对的，这正是我们想要的。
+            // DPI 也要按目标屏查，不能用 Handle 的当前监视器（拖拽中可能是旧屏）。
+            int dpi = MonitorDpiOf(scr);
 
             DpiDiag("  [apply] monitorDpi=" + dpi + " ClientSize=" + ClientSize +
-                    " screen=" + scr.DeviceName);
+                    " targetScreen=" + scr.DeviceName + " WA=" + scr.WorkingArea +
+                    " bounds=" + Bounds);
 
             // 从 96 DPI 基线直接重算绝对坐标，彻底摆脱 WinForms 的增量缩放累积
             // （实测增量方式会把控件放大到 1.25×1.75=2.19 倍，窗口只有 1.75 倍）。
@@ -347,7 +470,20 @@ namespace TTG_Tools
         {
             if (scr == null) return;
 
-            Rectangle wa = scr.WorkingArea;
+            // 用系统权威的工作区（扣任务栏）。Screen.WorkingArea 在高缩放下可能不准，
+            // 实测副屏报 1440 而真实可用仅 1356，会导致"判断装得下"却实际溢出。
+            Rectangle wa = RealWorkingArea(scr);
+
+            // 需要收缩时额外留边，让窗口**绝不满屏**。
+            // 原因：Windows 报告的 rcWork 在部分高缩放/多屏组合下会偏大，
+            // 若窗口正好顶到 rcWork 边缘，实际会被任务栏或屏幕边界遮挡。
+            // 留 6% 边距可以覆盖这种误差（200% + 任务栏场景下 94% × 1440 = 1354 ≤ 1356）。
+            int insetW = (int)(wa.Width * 0.03);
+            int insetH = (int)(wa.Height * 0.03);
+            Rectangle safeWa = new Rectangle(
+                wa.Left + insetW, wa.Top + insetH,
+                Math.Max(200, wa.Width - insetW * 2),
+                Math.Max(200, wa.Height - insetH * 2));
 
             _restoringSize = true;
             try
@@ -376,14 +512,16 @@ namespace TTG_Tools
                     bool needScroll = needW > ClientSize.Width || needH > ClientSize.Height;
                     if (needScroll)
                     {
-                        if (!AutoScroll) AutoScroll = true;
                         if (AutoScrollMinSize.Width < needW || AutoScrollMinSize.Height < needH)
                             AutoScrollMinSize = new Size(needW, needH);
+                        if (!AutoScroll) AutoScroll = true;
                     }
-                    else if (AutoScroll)
+                    else if (AutoScroll || AutoScrollMinSize != System.Drawing.Size.Empty)
                     {
-                        AutoScroll = false;
+                        // 关闭顺序很重要：必须先清 MinSize 再关 AutoScroll，
+                        // 否则会残留 scroll=True + minSize={0,0} 的矛盾状态（实测）。
                         AutoScrollMinSize = System.Drawing.Size.Empty;
+                        AutoScroll = false;
                     }
 
                     // 重新取非客户区尺寸（滚动条可能改变它）
@@ -391,8 +529,8 @@ namespace TTG_Tools
                     int ncW = base.Width - ClientSize.Width;
 
                     Size t = ClientSize;
-                    int limH = wa.Height - ncH;
-                    int limW = wa.Width - ncW;
+                    int limH = safeWa.Height - ncH;
+                    int limW = safeWa.Width - ncW;
                     if (limH > 0 && t.Height > limH) t.Height = limH;
                     if (limW > 0 && t.Width > limW) t.Width = limW;
                     if (t != ClientSize)
@@ -400,10 +538,10 @@ namespace TTG_Tools
 
                     // 位置夹取（用当前真实 Form 尺寸，避免越界）
                     int x = Left, y = Top;
-                    if (x + Wide() > wa.Right) x = wa.Right - Wide();
-                    if (y + High() > wa.Bottom) y = wa.Bottom - High();
-                    if (x < wa.Left) x = wa.Left;
-                    if (y < wa.Top) y = wa.Top;
+                    if (x + Wide() > safeWa.Right) x = safeWa.Right - Wide();
+                    if (y + High() > safeWa.Bottom) y = safeWa.Bottom - High();
+                    if (x < safeWa.Left) x = safeWa.Left;
+                    if (y < safeWa.Top) y = safeWa.Top;
                     if (x != Left || y != Top)
                         Location = new Point(x, y);
 
@@ -418,8 +556,8 @@ namespace TTG_Tools
                     Application.DoEvents();
                 }
 
-                // 最终硬约束：无论前面收敛如何，确保外框不超过工作区
-                ForceWindowInside(wa);
+                // 最终硬约束：无论前面收敛如何，确保外框不超过安全区
+                ForceWindowInside(safeWa);
 
                 DpiDiag("  [fit done] client=" + ClientSize + " form=" + base.Size +
                         " location=" + Location + " scroll=" + AutoScroll +
@@ -450,13 +588,15 @@ namespace TTG_Tools
         private void ForceWindowInside(Rectangle wa)
         {
             if (Handle == IntPtr.Zero) return;
+            if (wa.Width <= 0 || wa.Height <= 0) return;
 
-            int w = Math.Min(Wide(), wa.Width);
-            int h = Math.Min(High(), wa.Height);
+            // 留 2px 余量，避免因边框/舍入导致"看起来还差一点"。
+            int w = Math.Min(Wide(), wa.Width - 2);
+            int h = Math.Min(High(), wa.Height - 2);
 
             int x = Left, y = Top;
-            if (x + w > wa.Right) x = wa.Right - w;
-            if (y + h > wa.Bottom) y = wa.Bottom - h;
+            if (x + w > wa.Right - 2) x = wa.Right - 2 - w;
+            if (y + h > wa.Bottom - 2) y = wa.Bottom - 2 - h;
             if (x < wa.Left) x = wa.Left;
             if (y < wa.Top) y = wa.Top;
 
