@@ -412,8 +412,12 @@
   </Target>
   <Import Project="packages\Magick.NET-Q16-AnyCPU.14.11.1\build\netstandard20\Magick.NET-Q16-AnyCPU.targets" Condition="Exists('packages\Magick.NET-Q16-AnyCPU.14.11.1\build\netstandard20\Magick.NET-Q16-AnyCPU.targets')" />
   <PropertyGroup>
-    <PreBuildEvent>copy "$(SolutionDir)packages\Joveler.ZLibWrapper.1.3.1\build\net45\Precompiled\x64\zlibwapi.dll" "$(TargetDir)"
-copy "$(SolutionDir)packages\Joveler.ZLibWrapper.1.3.1\build\net45\Precompiled\x64\zlibwapi.dll" "$(TargetDir)zlibwapi.dll"</PreBuildEvent>
+    <!-- 直接构建 .csproj 时 $(SolutionDir) 为空（显示为 *Undefined*），
+         此时 packages 目录就在项目目录下，用它作为兜底。 -->
+    <PkgRoot Condition="'$(SolutionDir)' == '' or '$(SolutionDir)' == '*Undefined*'">$(MSBuildProjectDirectory)\</PkgRoot>
+    <PkgRoot Condition="'$(PkgRoot)' == ''">$(SolutionDir)</PkgRoot>
+    <PreBuildEvent>copy "$(PkgRoot)packages\Joveler.ZLibWrapper.1.3.1\build\net45\Precompiled\x64\zlibwapi.dll" "$(TargetDir)"
+copy "$(PkgRoot)packages\Joveler.ZLibWrapper.1.3.1\build\net45\Precompiled\x64\zlibwapi.dll" "$(TargetDir)zlibwapi.dll"</PreBuildEvent>
   </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
